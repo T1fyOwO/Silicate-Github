@@ -55,6 +55,8 @@ typedef struct {
     FFMPEG_FN(swr_free)
     FFMPEG_FN(avcodec_free_context)
     FFMPEG_FN(av_packet_free)
+    FFMPEG_FN(av_frame_free)
+    FFMPEG_FN(avformat_free_context)
 } ff_t;
 
 static std::vector<std::string> DLL_FUNCTION_NAMES = {
@@ -88,7 +90,9 @@ static std::vector<std::string> DLL_FUNCTION_NAMES = {
     "avio_close",
     "swr_free",
     "avcodec_free_context",
-    "av_packet_free"};
+    "av_packet_free",
+    "av_frame_free",
+    "avformat_free_context"};
 
 inline void* loadFunction(HMODULE* modules, size_t moduleSize,
                           const char* name) {
@@ -110,7 +114,7 @@ inline void* loadFunction(HMODULE* modules, size_t moduleSize,
     return fn;
 }
 
-static_assert(sizeof(ff_t) == sizeof(void*) * 31);
+static_assert(sizeof(ff_t) == sizeof(void*) * 33);
 
 inline bool loadFFmpegFunctions(void* ff) {
     std::vector<HMODULE> modules;

@@ -76,7 +76,7 @@ static std::vector<RenderOpt> parseArgs(std::stringstream& in) {
 
 void Renderer::saveSettings(fs::path& path) const {
     auto& settings = m_settings;
-  
+
     std::u8string pathU8 = path.u8string();
 
     (void)glz::write_file_json<glz::opts{.prettify = true}>(
@@ -160,7 +160,8 @@ void Renderer::loadSettings(fs::path& path) {
     auto& settings = m_settings;
     std::u8string pathU8 = path.u8string();
 
-    auto ec = glz::read_file_json(settings, std::string(pathU8.begin(), pathU8.end()), std::string{});
+    auto ec = glz::read_file_json(
+        settings, std::string(pathU8.begin(), pathU8.end()), std::string{});
     if (ec) {
         geode::log::error("Failed to read renderer settings: {}",
                           ec.custom_error_message);
@@ -262,11 +263,19 @@ geode::Result<> Renderer::start() {
     }
 
     // .string() is ansi but we want utf8 for them russians
-    out = Mod::get()->getPersistentDir() / "videos" /
-          std::filesystem::path(std::u8string(fileName.begin(), fileName.end()));
+    out =
+        Mod::get()->getPersistentDir() / "videos" /
+        std::filesystem::path(std::u8string(fileName.begin(), fileName.end()));
 
     auto outU8 = out.u8string();
     std::string outPath(outU8.begin(), outU8.end());
+
+    // free a stale context left over from a previous start() that failed
+    // before reaching stop()
+    if (m_formatCtx) {
+        ff->avformat_free_context(m_formatCtx);
+        m_formatCtx = nullptr;
+    }
 
     {
         ff->avformat_alloc_output_context2(&m_formatCtx, nullptr, nullptr,
@@ -729,8 +738,12 @@ geode::Result<> Renderer::stop() {
 
     ff->avio_close(m_formatCtx->pb);
     ff->swr_free(&m_swrCtx);
-    // avformat_free_context(m_formatCtx);  // only resource that's manually
-    // freed
+
+    // streams are owned by the format context, so this frees them too
+    ff->avformat_free_context(m_formatCtx);
+    m_formatCtx = nullptr;
+    m_videoStream = nullptr;
+    m_audioStream = nullptr;
 
     m_texture.destroy();
 

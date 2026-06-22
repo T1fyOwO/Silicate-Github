@@ -11,7 +11,7 @@
 class RenderTexture {
    public:
     void init(std::unique_ptr<Colorspace> colorspace);
-    void destroy() const;
+    void destroy();
     void capture(uint8_t** data, std::atomic<bool>& hasDataFlag);
     void postCapture();
     void displayPreview();

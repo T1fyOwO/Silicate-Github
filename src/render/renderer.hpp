@@ -9,6 +9,7 @@
 // #include "dsp.hpp"
 
 #include <atomic>
+#include <functional>
 #include <glaze/glaze.hpp>
 #include <memory>
 #include <mutex>
@@ -52,7 +53,7 @@ struct glz::meta<RendererSettings> {
         "record_paused", &T::m_firstAttemptPause);
 };
 
-#define SL_AV_PTR(type) std::unique_ptr<type, void (*)(type*)>
+#define SL_AV_PTR(type) std::unique_ptr<type, std::function<void(type*)>>
 
 #define SL_AV_LEAK(type) [](type*) {}
 
@@ -169,12 +170,12 @@ class Renderer {
     SL_AV_PTR(AVCodecContext)
     m_videoCodecCtx = {
         nullptr,
-        SL_AV_LEAK(AVCodecContext)
+        SL_AV_DELETER(AVCodecContext, ff->avcodec_free_context)
     };
     SL_AV_PTR(AVCodecContext)
     m_audioCodecCtx = {
         nullptr,
-        SL_AV_LEAK(AVCodecContext)
+        SL_AV_DELETER(AVCodecContext, ff->avcodec_free_context)
     };
     // SL_AV_PTR(AVFormatContext) m_formatCtx = {nullptr,
     // SL_AV_DELETER2(AVFormatContext, avformat_free_context)};
@@ -188,11 +189,15 @@ class Renderer {
     const AVCodec* m_videoCodec = nullptr;
     const AVCodec* m_audioCodec = nullptr;
 
-    SL_AV_PTR(AVFrame) m_frame = { nullptr, SL_AV_LEAK(AVFrame) };
-    SL_AV_PTR(AVFrame) m_audioFrame = { nullptr, SL_AV_LEAK(AVFrame) };
+    SL_AV_PTR(AVFrame)
+    m_frame = { nullptr, SL_AV_DELETER(AVFrame, ff->av_frame_free) };
+    SL_AV_PTR(AVFrame)
+    m_audioFrame = { nullptr, SL_AV_DELETER(AVFrame, ff->av_frame_free) };
 
-    SL_AV_PTR(AVPacket) m_pkt = { nullptr, SL_AV_LEAK(AVPacket) };
-    SL_AV_PTR(AVPacket) m_audioPkt = { nullptr, SL_AV_LEAK(AVPacket) };
+    SL_AV_PTR(AVPacket)
+    m_pkt = { nullptr, SL_AV_DELETER(AVPacket, ff->av_packet_free) };
+    SL_AV_PTR(AVPacket)
+    m_audioPkt = { nullptr, SL_AV_DELETER(AVPacket, ff->av_packet_free) };
 
     float m_visualFps = 60.0f;
     bool m_recording = false;

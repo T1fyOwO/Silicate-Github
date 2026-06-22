@@ -156,10 +156,7 @@ void RenderTexture::capture(uint8_t** data, std::atomic<bool>& hasDataFlag) {
     glEnable(GL_BLEND);
 }
 
-void RenderTexture::postCapture() {
-    glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-}
+void RenderTexture::postCapture() { glUnmapBuffer(GL_PIXEL_PACK_BUFFER); }
 
 void RenderTexture::displayPreview() {
     CCSize size = CCDirector::sharedDirector()->getOpenGLView()->getFrameSize();
@@ -183,7 +180,11 @@ void RenderTexture::displayPreview() {
     }
 }
 
-void RenderTexture::destroy() const {
+void RenderTexture::destroy() {
+    for (auto& pass : m_passes) {
+        pass.destroy();
+    }
+
     glDeleteTextures(2, m_tex);
     glDeleteFramebuffers(2, m_fbo);
     glDeleteBuffers(1, &m_pbo);
