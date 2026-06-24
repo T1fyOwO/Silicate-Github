@@ -64,23 +64,17 @@ class YUV420PColorspace : public Colorspace {
             out vec4 fragColor;
 
             uniform sampler2D u_texture;
-            uniform vec2 u_texelSize;
 
             const vec3 coeffU = vec3(-0.11457, -0.38543, 0.5);
 
             void main() {
-                vec3 rgb00 = texture2D(u_texture, v_texCoord).rgb;
-                vec3 rgb01 = texture2D(u_texture, v_texCoord + vec2(u_texelSize.x, 0)).rgb;
-                vec3 rgb10 = texture2D(u_texture, v_texCoord + vec2(0, u_texelSize.y)).rgb;
-                vec3 rgb11 = texture2D(u_texture, v_texCoord + u_texelSize).rgb;
-
-                vec3 rgb = (rgb00 + rgb01 + rgb10 + rgb11) / 4.0;
+                vec3 rgb = texture2D(u_texture, v_texCoord).rgb;
 
                 float u = dot(rgb, coeffU) + 0.5;
 
                 // convert range to bt709
                 u = u * 224.0 / 255.0 + 16.0 / 255.0;
-            
+
                 gl_FragData[0] = vec4(u, 0.0, 0.0, 1.0);
             })",
                            .m_readPixels =
@@ -102,23 +96,17 @@ class YUV420PColorspace : public Colorspace {
             out vec4 fragColor;
 
             uniform sampler2D u_texture;
-            uniform vec2 u_texelSize;
 
             const vec3 coeffV = vec3(0.5, -0.45415, -0.04585);
 
             void main() {
-                vec3 rgb00 = texture2D(u_texture, v_texCoord).rgb;
-                vec3 rgb01 = texture2D(u_texture, v_texCoord + vec2(u_texelSize.x, 0)).rgb;
-                vec3 rgb10 = texture2D(u_texture, v_texCoord + vec2(0, u_texelSize.y)).rgb;
-                vec3 rgb11 = texture2D(u_texture, v_texCoord + u_texelSize).rgb;
-
-                vec3 rgb = (rgb00 + rgb01 + rgb10 + rgb11) / 4.0;
+                vec3 rgb = texture2D(u_texture, v_texCoord).rgb;
 
                 float v = dot(rgb, coeffV) + 0.5;
 
                 // convert range to bt709
                 v = v * 224.0 / 255.0 + 16.0 / 255.0;
-            
+
                 gl_FragData[0] = vec4(v, 0.0, 0.0, 1.0);
             })",
                     .m_readPixels = [this, yPlaneSize, uvPlaneSize](float x,

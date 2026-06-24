@@ -2,7 +2,6 @@
 
 #include <cocos2d.h>
 
-#include <atomic>
 #include <memory>
 
 #include "colorspace/colorspace.hpp"
@@ -10,10 +9,11 @@
 
 class RenderTexture {
    public:
+    static constexpr int RING_SIZE = 3;
+
     void init(std::unique_ptr<Colorspace> colorspace);
     void destroy();
-    void capture(uint8_t** data, std::atomic<bool>& hasDataFlag);
-    void postCapture();
+    bool capture(uint8_t** data);
     void displayPreview();
 
    public:
@@ -29,7 +29,12 @@ class RenderTexture {
 
     int m_old_fbo, m_old_rbo;
     uint32_t m_fbo[2];
-    uint32_t m_pbo;
+
+    uint32_t m_pbo[RING_SIZE];
+    bool m_slotMapped[RING_SIZE] = {};
+    size_t m_bufferSize = 0;
+    int m_writeIndex = 0;     // slot the next readback writes into
+    int m_inflightSlot = -1;  // slot awaiting delivery, -1 if none
 
     uint32_t m_program;
 };

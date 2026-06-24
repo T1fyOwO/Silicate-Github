@@ -15,6 +15,8 @@
 #include <string>
 #include <thread>
 
+#include "Geode/utils/random.hpp"
+#include "Geode/utils/string.hpp"
 #include "bot/bot.hpp"
 #include "colorspace/nv12.hpp"
 #include "colorspace/rgb0.hpp"
@@ -29,19 +31,6 @@ using namespace geode::prelude;
 constexpr int ALIGNMENT = 1;
 
 namespace fs = std::filesystem;
-
-static void replaceString(std::string& s, const std::string& from,
-                          const std::string& to) {
-    if (from.empty()) {
-        return;
-    };
-
-    size_t start_pos = 0;
-    while ((start_pos = s.find(from, start_pos)) != std::string::npos) {
-        s.replace(start_pos, from.length(), to);
-        start_pos += to.length();
-    }
-}
 
 struct RenderOpt {
     std::string m_name;
@@ -77,10 +66,8 @@ static std::vector<RenderOpt> parseArgs(std::stringstream& in) {
 void Renderer::saveSettings(fs::path& path) const {
     auto& settings = m_settings;
 
-    std::u8string pathU8 = path.u8string();
-
     (void)glz::write_file_json<glz::opts{.prettify = true}>(
-        settings, std::string(pathU8.begin(), pathU8.end()), std::string{});
+        settings, geode::utils::string::pathToString(path), std::string{});
 }
 
 enum class GPUVendor {
@@ -158,10 +145,8 @@ void Renderer::loadSettings(fs::path& path) {
     }
 
     auto& settings = m_settings;
-    std::u8string pathU8 = path.u8string();
-
     auto ec = glz::read_file_json(
-        settings, std::string(pathU8.begin(), pathU8.end()), std::string{});
+        settings, geode::utils::string::pathToString(path), std::string{});
     if (ec) {
         geode::log::error("Failed to read renderer settings: {}",
                           ec.custom_error_message);
@@ -235,8 +220,6 @@ geode::Result<> Renderer::start() {
                                                         &m_channels);
     m_seenFrames = 0;
 
-    std::filesystem::path out;
-
     std::vector<RenderOpt> args = {};
     {
         std::stringstream s(m_settings.m_renderArgs);
@@ -249,26 +232,24 @@ geode::Result<> Renderer::start() {
 
         std::string formatted(m_videoNameTemplate->inner());  // copy
 
-        int randomNumber = rand();
+        int randomNumber = geode::utils::random::generate(0, 999'999'999);
 
-        replaceString(formatted, "%name%", pl->m_level->m_levelName);
-        replaceString(formatted, "%id%",
-                      std::to_string(pl->m_level->m_levelID.value()));
-        replaceString(formatted, "%creator%", pl->m_level->m_creatorName);
-        replaceString(formatted, "%rand%", std::to_string(randomNumber));
+        namespace str = geode::utils::string;
+
+        str::replace(formatted, "%name%", pl->m_level->m_levelName);
+        str::replace(formatted, "%id%",
+                     std::to_string(pl->m_level->m_levelID.value()));
+        str::replace(formatted, "%creator%", pl->m_level->m_creatorName);
+        str::replace(formatted, "%rand%", std::to_string(randomNumber));
 
         fileName = formatted + "." + m_settings.m_extension;
     } else {
         fileName = m_settings.m_outputPath + "." + m_settings.m_extension;
     }
 
-    // .string() is ansi but we want utf8 for them russians
-    out =
+    std::string outPath = geode::utils::string::pathToString(
         Mod::get()->getPersistentDir() / "videos" /
-        std::filesystem::path(std::u8string(fileName.begin(), fileName.end()));
-
-    auto outU8 = out.u8string();
-    std::string outPath(outU8.begin(), outU8.end());
+        std::filesystem::path(fileName));
 
     // free a stale context left over from a previous start() that failed
     // before reaching stop()
@@ -494,6 +475,8 @@ geode::Result<> Renderer::start() {
     m_endTime = 0.0;
     m_audioIndex = 0;
     m_updateIndex = 0;
+    m_bufferPts = 0;
+    m_ptsQueue.clear();
 
     m_recording = true;
     m_texture.m_width = m_settings.m_width;
@@ -569,7 +552,9 @@ geode::Result<> Renderer::encode(uint8_t* data, size_t size) {
     }
 
     // m_frame->buf[0] = m_hwBuffer;
-    m_frame->pts = m_updateIndex - 1;
+    // pts of the delivered frame, set by capture() when it dequeued the buffer
+    // (the readback pipeline runs one frame behind m_updateIndex).
+    m_frame->pts = m_bufferPts;
 
     ret = ff->avcodec_send_frame(m_videoCodecCtx.get(), m_frame.get());
     if (ret < 0) {
@@ -727,9 +712,6 @@ geode::Result<> Renderer::stop() {
     m_collected = false;
 
     geode::log::info("Rendering has stopped. Cleaning up");
-    if (m_needsCleanup) {
-        m_texture.postCapture();
-    }
 
     if (m_frame) {
         m_frame->data[0] = nullptr;
@@ -771,7 +753,6 @@ void Renderer::recordLoop() {
                 }
             }
 
-            m_needsCleanup = true;
             m_collected = false;
             m_halting = false;
         }
@@ -784,7 +765,20 @@ void Renderer::recordLoop() {
     }
 }
 
-void Renderer::capture() { m_texture.capture(&m_buffer, m_collected); }
+void Renderer::capture() {
+    // record the pts for the read
+    m_ptsQueue.push_back(m_updateIndex - 1);
+
+    bool delivered = m_texture.capture(&m_buffer);
+    if (delivered) {
+        m_bufferPts = m_ptsQueue.front();
+        m_ptsQueue.pop_front();
+        // don't publish half updated shit
+        m_collected = true;
+    } else {
+        m_halting = false;
+    }
+}
 
 void Renderer::update(PlayLayer* pl) {
     if (!this->isRecording()) return;

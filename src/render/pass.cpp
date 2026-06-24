@@ -62,6 +62,10 @@ void RenderPass::initialize() {
     glDeleteShader(vs);
     glDeleteShader(fs);
 
+    // cache uniforms
+    m_uTextureLoc = glGetUniformLocation(m_program, "u_texture");
+    m_uTexelSizeLoc = glGetUniformLocation(m_program, "u_texelSize");
+
     glBindFramebuffer(GL_FRAMEBUFFER, oldFbo);
     glBindTexture(GL_TEXTURE_2D, oldTex);
 

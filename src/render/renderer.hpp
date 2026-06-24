@@ -9,6 +9,8 @@
 // #include "dsp.hpp"
 
 #include <atomic>
+#include <cstdint>
+#include <deque>
 #include <functional>
 #include <glaze/glaze.hpp>
 #include <memory>
@@ -141,7 +143,6 @@ class Renderer {
         "renderer.video_name_template", &SLSettings::get()->videoNameTemplate);
 
     double m_time = 0;
-    bool m_needsCleanup = false;
     RenderTexture m_texture;
     ff_t* ff = 0;
 
@@ -168,15 +169,11 @@ class Renderer {
     // AVBufferRef* m_frameBuffer = nullptr;
 
     SL_AV_PTR(AVCodecContext)
-    m_videoCodecCtx = {
-        nullptr,
-        SL_AV_DELETER(AVCodecContext, ff->avcodec_free_context)
-    };
+    m_videoCodecCtx = {nullptr,
+                       SL_AV_DELETER(AVCodecContext, ff->avcodec_free_context)};
     SL_AV_PTR(AVCodecContext)
-    m_audioCodecCtx = {
-        nullptr,
-        SL_AV_DELETER(AVCodecContext, ff->avcodec_free_context)
-    };
+    m_audioCodecCtx = {nullptr,
+                       SL_AV_DELETER(AVCodecContext, ff->avcodec_free_context)};
     // SL_AV_PTR(AVFormatContext) m_formatCtx = {nullptr,
     // SL_AV_DELETER2(AVFormatContext, avformat_free_context)};
     AVFormatContext* m_formatCtx = nullptr;  // managed by avformat_free_context
@@ -190,14 +187,14 @@ class Renderer {
     const AVCodec* m_audioCodec = nullptr;
 
     SL_AV_PTR(AVFrame)
-    m_frame = { nullptr, SL_AV_DELETER(AVFrame, ff->av_frame_free) };
+    m_frame = {nullptr, SL_AV_DELETER(AVFrame, ff->av_frame_free)};
     SL_AV_PTR(AVFrame)
-    m_audioFrame = { nullptr, SL_AV_DELETER(AVFrame, ff->av_frame_free) };
+    m_audioFrame = {nullptr, SL_AV_DELETER(AVFrame, ff->av_frame_free)};
 
     SL_AV_PTR(AVPacket)
-    m_pkt = { nullptr, SL_AV_DELETER(AVPacket, ff->av_packet_free) };
+    m_pkt = {nullptr, SL_AV_DELETER(AVPacket, ff->av_packet_free)};
     SL_AV_PTR(AVPacket)
-    m_audioPkt = { nullptr, SL_AV_DELETER(AVPacket, ff->av_packet_free) };
+    m_audioPkt = {nullptr, SL_AV_DELETER(AVPacket, ff->av_packet_free)};
 
     float m_visualFps = 60.0f;
     bool m_recording = false;
@@ -216,6 +213,10 @@ class Renderer {
     // std::vector<uint8_t> m_buffer;
     uint8_t* m_buffer = nullptr;
     size_t m_bufferSize = 0;
+
+    // updateindex cant be reliable pts no more cuz pts is slightly late
+    int64_t m_bufferPts = 0;
+    std::deque<int64_t> m_ptsQueue;
 
     int m_alignedWidth = 0;
     int m_alignedHeight = 0;

@@ -9,6 +9,7 @@
 #include <tabby.hpp>
 #include <variant>
 
+#include "Geode/utils/string.hpp"
 #include "assist/autoclicker.hpp"
 #include "assist/hitboxes.hpp"
 #include "bot/bot.hpp"
@@ -282,12 +283,6 @@ static float getWindowDpi() {
 // EPIC code
 static std::string ffmpegUrl = "https://cdn.silicate.dev/ffmpeg.zip";
 
-static std::string utf8SafePath(const std::filesystem::path path) {
-  std::u8string utf8 = path.u8string();
-  std::string result = std::string(utf8.begin(), utf8.end());
-  return result;
-}
-
 void UIManager::setup() {
     m_state.m_animationSpeed->handle([](float& speed) {
         if (speed < 0.1f || speed > 3.0f) {
@@ -334,12 +329,16 @@ void UIManager::setup() {
     mediumFontCfg.GlyphExtraAdvanceX = -1.0f * 20.0f * 0.02f;
 
     ImFont* mediumFont = ImGui::GetIO().Fonts->AddFontFromFileTTF(
-        utf8SafePath(Mod::get()->getResourcesDir() / "font_medium.ttf").c_str(),
+        geode::utils::string::pathToString(Mod::get()->getResourcesDir() /
+                                           "font_medium.ttf")
+            .c_str(),
         20.0f, &mediumFontCfg);
     mediumFontCfg.MergeMode = true;
     mediumFontCfg.GlyphOffset = ImVec2(0.0f, -1.0f);
     ImGui::GetIO().Fonts->AddFontFromFileTTF(
-        utf8SafePath(Mod::get()->getResourcesDir() / "font_symbols.ttf").c_str(),
+        geode::utils::string::pathToString(Mod::get()->getResourcesDir() /
+                                           "font_symbols.ttf")
+            .c_str(),
         18.0f, &mediumFontCfg, glyphRanges.Data);
 
     ImGui::GetIO().Fonts->Build();
@@ -351,12 +350,16 @@ void UIManager::setup() {
     mainFontCfg.GlyphExtraAdvanceX = -1.0f * 17.0f * 0.03f;
 
     ImFont* mainFont = ImGui::GetIO().Fonts->AddFontFromFileTTF(
-        utf8SafePath(Mod::get()->getResourcesDir() / "font_main.ttf").c_str(),
+        geode::utils::string::pathToString(Mod::get()->getResourcesDir() /
+                                           "font_main.ttf")
+            .c_str(),
         17.0f, &mainFontCfg);
     mainFontCfg.MergeMode = true;
     mainFontCfg.GlyphOffset = ImVec2(0.0f, -2.0f);
     ImGui::GetIO().Fonts->AddFontFromFileTTF(
-        utf8SafePath(Mod::get()->getResourcesDir() / "font_symbols.ttf").c_str(),
+        geode::utils::string::pathToString(Mod::get()->getResourcesDir() /
+                                           "font_symbols.ttf")
+            .c_str(),
         14.0f, &mainFontCfg, glyphRanges.Data);
 
     ImGui::GetIO().Fonts->Build();
@@ -364,8 +367,10 @@ void UIManager::setup() {
     m_font = tabby::Font(mainFont);
     m_medium = tabby::Font(mediumFont);
 
-    m_bold = tabby::Font::load(
-        utf8SafePath(Mod::get()->getResourcesDir() / "font_bold.ttf"), 32.0f);
+    m_bold =
+        tabby::Font::load(geode::utils::string::pathToString(
+                              Mod::get()->getResourcesDir() / "font_bold.ttf"),
+                          32.0f);
 
     m_state.m_rainbow->notifyChange();
     m_state.m_playAnimations->notifyChange();
@@ -769,7 +774,8 @@ void UIManager::draw() {
                     m_state.m_showExperimentalFeatures) {
                     if (tabby::button("Add TPS Change").pressed) {
                         (void)bot->replaySystem().m_actionAtom.addAction(
-                            bot->updater().getFrame() - 1, bot->updater().getTps());
+                            bot->updater().getFrame() - 1,
+                            bot->updater().getTps());
                         bot->updater().estimatedStepCount = 0;
                     }
                 }

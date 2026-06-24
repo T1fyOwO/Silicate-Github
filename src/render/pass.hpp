@@ -22,6 +22,9 @@ class RenderPass {
     const char* m_fragmentShader;
     GLuint m_sourceTex = 0;  // Texture to read from if shaders are present
 
+    GLint m_uTextureLoc = -1;
+    GLint m_uTexelSizeLoc = -1;
+
     std::function<void(float, float)> m_readPixels;
 
    public:

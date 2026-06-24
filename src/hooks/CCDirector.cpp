@@ -40,11 +40,6 @@ struct SLCCDirector : Modify<SLCCDirector, CCDirector> {
                 return;
             }
 
-            if (renderer->m_needsCleanup) {
-                renderer->m_texture.postCapture();
-                renderer->m_needsCleanup = false;
-            }
-
             SL_LOG_DEV("Updating because not collected yet...");
 
             // nuh uh

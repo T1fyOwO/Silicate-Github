@@ -1,7 +1,5 @@
 #include "texture.hpp"
 
-#include <Geode/cocos/platform/win32/CCGL.h>
-
 #include <Geode/Geode.hpp>
 #include <Geode/binding/PlayLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
@@ -45,11 +43,19 @@ void RenderTexture::init(std::unique_ptr<Colorspace> colorspace) {
         pass.initialize();
     }
 
-    glGenBuffers(1, &m_pbo);
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo);
-    glBufferData(GL_PIXEL_PACK_BUFFER, m_colorspace->getBufferSize(), nullptr,
-                 GL_STREAM_READ);
+    m_bufferSize = m_colorspace->getBufferSize();
+
+    glGenBuffers(RING_SIZE, m_pbo);
+    for (int i = 0; i < RING_SIZE; ++i) {
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[i]);
+        glBufferData(GL_PIXEL_PACK_BUFFER, m_bufferSize, nullptr,
+                     GL_STREAM_READ);
+        m_slotMapped[i] = false;
+    }
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+    m_writeIndex = 0;
+    m_inflightSlot = -1;
 
     float vertices[] = {
         // Pos      // UVs
@@ -85,7 +91,7 @@ void RenderTexture::init(std::unique_ptr<Colorspace> colorspace) {
 #endif
 }
 
-void RenderTexture::capture(uint8_t** data, std::atomic<bool>& hasDataFlag) {
+bool RenderTexture::capture(uint8_t** data) {
     auto director = cocos2d::CCDirector::sharedDirector();
 
     CCSize size = director->getOpenGLView()->getFrameSize();
@@ -94,15 +100,24 @@ void RenderTexture::capture(uint8_t** data, std::atomic<bool>& hasDataFlag) {
 
     int blend;
     glGetIntegerv(GL_BLEND, &blend);
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo);
+
+    const int w = m_writeIndex;
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[w]);
+
+    if (m_slotMapped[w]) {
+        // dont let the cia take over
+        glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+        m_slotMapped[w] = false;
+    }
 
     for (size_t i = 0; i < m_passes.size(); ++i) {
         auto& pass = m_passes[i];
         glBindFramebuffer(GL_FRAMEBUFFER, pass.m_fbo);
         glViewport(0, 0, pass.m_width, pass.m_height);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         if (i == 0) {
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
             // actually render the scene
             silentChangeSize(cocos2d::CCSize(pass.m_width, pass.m_height),
                              m_widthOffset, m_heightOffset);
@@ -121,9 +136,9 @@ void RenderTexture::capture(uint8_t** data, std::atomic<bool>& hasDataFlag) {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, pass.m_tex);
 
-            glUniform1i(glGetUniformLocation(pass.m_program, "u_texture"), 1);
-            glUniform2f(glGetUniformLocation(pass.m_program, "u_texelSize"),
-                        1.0f / pass.m_width, 1.0f / pass.m_height);
+            glUniform1i(pass.m_uTextureLoc, 1);
+            glUniform2f(pass.m_uTexelSizeLoc, 1.0f / pass.m_width,
+                        1.0f / pass.m_height);
 
             glBindVertexArray(m_quadVAO);
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
@@ -136,27 +151,35 @@ void RenderTexture::capture(uint8_t** data, std::atomic<bool>& hasDataFlag) {
         pass.m_readPixels(0, 0);
     }
 
-    // glReadPixels(0, 0, m_width, m_height, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+    bool delivered = false;
+    if (m_inflightSlot >= 0) {
+        const int p = m_inflightSlot;
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[p]);
+        auto* pixelData = static_cast<uint8_t*>(
+            glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY));
+        m_slotMapped[p] = (pixelData != nullptr);
 
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo);
-    auto* pixelData =
-        static_cast<uint8_t*>(glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY));
-
-    if (pixelData) {
-        *data = pixelData;
-        hasDataFlag = true;
-    } else {
-        geode::log::error("Failed to map buffer: {}", glGetError());
+        if (pixelData) {
+            *data = pixelData;
+            delivered = true;
+        } else {
+            geode::log::error("Failed to map buffer: {}", glGetError());
+        }
     }
+
+    m_inflightSlot = w;
+    m_writeIndex = (w + 1) % RING_SIZE;
+
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
     silentChangeSize(cocos2d::CCSize(m_width, m_height), 0, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, m_old_fbo);
 
     glUseProgram(0);
     glEnable(GL_BLEND);
-}
 
-void RenderTexture::postCapture() { glUnmapBuffer(GL_PIXEL_PACK_BUFFER); }
+    return delivered;
+}
 
 void RenderTexture::displayPreview() {
     CCSize size = CCDirector::sharedDirector()->getOpenGLView()->getFrameSize();
@@ -185,12 +208,24 @@ void RenderTexture::destroy() {
         pass.destroy();
     }
 
+    for (int i = 0; i < RING_SIZE; ++i) {
+        if (m_slotMapped[i]) {
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[i]);
+            glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+            m_slotMapped[i] = false;
+        }
+    }
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
     glDeleteTextures(2, m_tex);
     glDeleteFramebuffers(2, m_fbo);
-    glDeleteBuffers(1, &m_pbo);
+    glDeleteBuffers(RING_SIZE, m_pbo);
     glDeleteVertexArrays(1, &m_quadVAO);
     glDeleteBuffers(1, &m_quadVBO);
     glDeleteProgram(m_program);
+
+    m_inflightSlot = -1;
+    m_writeIndex = 0;
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_old_fbo);
 }
