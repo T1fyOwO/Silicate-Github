@@ -3,7 +3,6 @@
 #include <Geode/Geode.hpp>
 
 #include "bot/bot.hpp"
-#include "bot/updater.hpp"
 #include "ccTypes.h"
 #include "settings/settings.hpp"
 #include "trajectory/trajectory.hpp"
@@ -382,102 +381,47 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
         using Type = SLSettings::HitboxSettings::Type;
 
         const float width = settings.width / pl->m_gameState.m_cameraZoom;
-        float frequencyLevel =
-            (Bot::get()->updater().m_tps->inner() + 500.0) / 1000.0;
-        frequencyLevel /= scale;
-        if (scale >= 4) {
-            frequencyLevel = 1;
-        }
 
-        int frequency = std::max((int)frequencyLevel, 1);
+        const bool eRotated = HB_ENABLED(Type::PlayerRotated);
+        const bool eSolid = HB_ENABLED(Type::Player);
+        const bool eCircle = HB_ENABLED(Type::PlayerCircle);
+        const bool eInner = HB_ENABLED(Type::PlayerInner);
 
-        // geode::log::info("drawing rotated trail...");
-        if (HB_ENABLED(Type::PlayerRotated)) {
-            float* colors =
-                settings.categories[Type::PlayerRotated].colors.data();
-            float fillOpacity =
-                settings.categories[Type::PlayerRotated].fillOpacity;
-            for (size_t i = 0; i < m_trailP1.size(); i += frequency) {
-                auto& unit = m_trailP1[i];
-                if (unit.shouldDraw(minX, maxX, minY, maxY)) {
-                    unit.drawRotated(this->m_rotatedTrailDrawNode, width,
-                                     colors, fillOpacity);
-                }
+        float* rotatedColors =
+            settings.categories[Type::PlayerRotated].colors.data();
+        float rotatedFill =
+            settings.categories[Type::PlayerRotated].fillOpacity;
+        float* solidColors = settings.categories[Type::Player].colors.data();
+        float solidFill = settings.categories[Type::Player].fillOpacity;
+        float* circleColors =
+            settings.categories[Type::PlayerCircle].colors.data();
+        float circleFill = settings.categories[Type::PlayerCircle].fillOpacity;
+        float* innerColors =
+            settings.categories[Type::PlayerInner].colors.data();
+        float innerFill = settings.categories[Type::PlayerInner].fillOpacity;
+
+        auto drawTrail = [&](std::deque<HitboxTrailUnit>& trail) {
+            for (auto& unit : trail) {
+                if (!unit.shouldDraw(minX, maxX, minY, maxY)) continue;
+
+                if (eRotated)
+                    unit.drawRotated(m_rotatedTrailDrawNode, width,
+                                     rotatedColors, rotatedFill);
+                if (eSolid)
+                    unit.draw(m_solidTrailDrawNode, width, solidColors,
+                              solidFill);
+                if (eCircle)
+                    unit.drawCircle(m_circleTrailDrawNode, width, circleColors,
+                                    circleFill);
+                if (eInner)
+                    unit.drawInner(m_innerTrailDrawNode, width, innerColors,
+                                   innerFill);
             }
+        };
 
-            for (size_t i = 0; i < m_trailP2.size(); i += frequency) {
-                auto& unit = m_trailP2[i];
-                if (unit.shouldDraw(minX, maxX, minY, maxY)) {
-                    unit.drawRotated(this->m_rotatedTrailDrawNode, width,
-                                     colors, fillOpacity);
-                }
-            }
-        }
-
-        // geode::log::info("drawing normal trail...");
-        if (HB_ENABLED(Type::Player)) {
-            float* colors = settings.categories[Type::Player].colors.data();
-            float fillOpacity = settings.categories[Type::Player].fillOpacity;
-            for (size_t i = 0; i < m_trailP1.size(); i += frequency) {
-                auto& unit = m_trailP1[i];
-                if (unit.shouldDraw(minX, maxX, minY, maxY)) {
-                    unit.draw(this->m_solidTrailDrawNode, width, colors,
-                              fillOpacity);
-                }
-            }
-
-            for (size_t i = 0; i < m_trailP2.size(); i += frequency) {
-                auto& unit = m_trailP2[i];
-                if (unit.shouldDraw(minX, maxX, minY, maxY)) {
-                    unit.draw(this->m_solidTrailDrawNode, width, colors,
-                              fillOpacity);
-                }
-            }
-        }
-
-        if (HB_ENABLED(Type::PlayerCircle)) {
-            float* colors =
-                settings.categories[Type::PlayerCircle].colors.data();
-            float fillOpacity =
-                settings.categories[Type::PlayerCircle].fillOpacity;
-            for (size_t i = 0; i < m_trailP1.size(); i += frequency) {
-                auto& unit = m_trailP1[i];
-                if (unit.shouldDraw(minX, maxX, minY, maxY)) {
-                    unit.drawCircle(this->m_circleTrailDrawNode, width, colors,
-                                    fillOpacity);
-                }
-            }
-
-            for (size_t i = 0; i < m_trailP2.size(); i += frequency) {
-                auto& unit = m_trailP2[i];
-                if (unit.shouldDraw(minX, maxX, minY, maxY)) {
-                    unit.drawCircle(this->m_circleTrailDrawNode, width, colors,
-                                    fillOpacity);
-                }
-            }
-        }
-
-        // geode::log::info("drawing inner trail...");
-        if (HB_ENABLED(Type::PlayerInner)) {
-            float* colors =
-                settings.categories[Type::PlayerInner].colors.data();
-            float fillOpacity =
-                settings.categories[Type::PlayerInner].fillOpacity;
-            for (size_t i = 0; i < m_trailP1.size(); i += frequency) {
-                auto& unit = m_trailP1[i];
-                if (unit.shouldDraw(minX, maxX, minY, maxY)) {
-                    unit.drawInner(this->m_innerTrailDrawNode, width, colors,
-                                   fillOpacity);
-                }
-            }
-
-            for (size_t i = 0; i < m_trailP2.size(); i += frequency) {
-                auto& unit = m_trailP2[i];
-                if (unit.shouldDraw(minX, maxX, minY, maxY)) {
-                    unit.drawInner(this->m_innerTrailDrawNode, width, colors,
-                                   fillOpacity);
-                }
-            }
+        if (eRotated || eSolid || eCircle || eInner) {
+            drawTrail(m_trailP1);
+            drawTrail(m_trailP2);
         }
     }
 
@@ -494,33 +438,50 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
     }
 }
 
+static constexpr float TRAIL_SPACING_FACTOR = 0.34f;
+static constexpr float TRAIL_MIN_SPACING = 2.0f;
+static constexpr size_t TRAIL_MAX_UNITS = 69420;
+
+static bool trailMovedEnough(const std::deque<HitboxTrailUnit>& trail,
+                             const cocos2d::CCRect& rect) {
+    if (trail.empty()) return true;
+
+    const auto& last = trail.back().m_rect;
+    const float dx = rect.getMidX() - last.getMidX();
+    const float dy = rect.getMidY() - last.getMidY();
+    const float threshold =
+        std::max(rect.size.width * TRAIL_SPACING_FACTOR, TRAIL_MIN_SPACING);
+
+    return (dx * dx + dy * dy) >= threshold * threshold;
+}
+
+static void appendTrailUnit(std::deque<HitboxTrailUnit>& trail,
+                            PlayerObject* player, const cocos2d::CCRect& rect) {
+    auto* box = player->getOrientedBox();
+    trail.push_back({
+        .m_rect = rect,
+        .m_scaled = player->getObjectRect(0.3, 0.3),
+        .m_rotated = box ? box->m_corners : std::array<cocos2d::CCPoint, 4>{},
+    });
+
+    if (trail.size() > TRAIL_MAX_UNITS) {
+        trail.pop_front();
+    }
+}
+
 void Hitboxes::saveToTrail(GJBaseGameLayer* pl) {
     if (pl->m_levelEndAnimationStarted) {
         return;  // don't
     }
 
-    auto* p1Box = pl->m_player1->getOrientedBox();
-    auto* p2Box = pl->m_player2->getOrientedBox();
-
-    m_trailP1.push_back({
-        .m_rect = pl->m_player1->getObjectRect(),
-        .m_scaled = pl->m_player1->getObjectRect(0.3, 0.3),
-        .m_rotated =
-            p1Box ? p1Box->m_corners : std::array<cocos2d::CCPoint, 4>{},
-    });
-    m_trailP2.push_back({
-        .m_rect = pl->m_player2->getObjectRect(),
-        .m_scaled = pl->m_player2->getObjectRect(0.3, 0.3),
-        .m_rotated =
-            p2Box ? p2Box->m_corners : std::array<cocos2d::CCPoint, 4>{},
-    });
-
-    if (m_trailP1.size() > 69420) {
-        m_trailP1.pop_front();
+    auto rect1 = pl->m_player1->getObjectRect();
+    if (trailMovedEnough(m_trailP1, rect1)) {
+        appendTrailUnit(m_trailP1, pl->m_player1, rect1);
     }
 
-    if (m_trailP2.size() > 69420) {
-        m_trailP2.pop_front();
+    auto rect2 = pl->m_player2->getObjectRect();
+    if (trailMovedEnough(m_trailP2, rect2)) {
+        appendTrailUnit(m_trailP2, pl->m_player2, rect2);
     }
 }
 
