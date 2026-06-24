@@ -1289,10 +1289,7 @@ void UIManager::draw() {
                 tabby::divider();
 
                 auto ar = AudioRecorder::get();
-                if (ar) {
-                    tabby::checkbox("Audio Preview",
-                                    ar->m_audioPreview->inner());
-                }
+                tabby::checkbox("Audio Preview", ar->m_audioPreview->inner());
 
                 tabby::text("Presets", m_medium);
 

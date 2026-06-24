@@ -114,8 +114,10 @@ void AudioRecorder::attach(double musicVolume, double sfxVolume) {
 
     if (m_audioPreview->inner()) {
         startMonitor();
-        if (m_monSystem && m_monChannel) {
-            m_monChannel->setVolume(m_previousMusicVolume);
+        if (m_monChannel) {
+            // Scale the preview by the engine's music volume (kept in sync each
+            // frame in unpause()).
+            m_monChannel->setVolume(engine->getBackgroundMusicVolume());
         }
     }
 
@@ -228,6 +230,9 @@ void AudioRecorder::unpause() {
     m_shouldUpdateFmod = false;
 
     if (m_monSystem) {
+        if (m_monChannel) {
+            m_monChannel->setVolume(engine->getBackgroundMusicVolume());
+        }
         m_monSystem->update();
     }
 }
