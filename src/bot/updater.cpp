@@ -402,7 +402,9 @@ void BotUpdater::backwardsStep(int n) {
             auto pl = PlayLayer::get();
             auto bot = Bot::get();
 
-            for (int i = 0; i < n - 1; i++) {
+            for (int i = 0;
+                 i < n - 1 && bot->practiceFix().m_storedFrames.size() > 1;
+                 i++) {
                 bot->practiceFix().dropLastStoredFrame();
             }
 
@@ -436,7 +438,14 @@ void BotUpdater::findBestFrameCandidate() {
                          m_acceptablePrediction->inner());
 
     m_predicting = true;
-    while (!pl->m_playerDied) {
+    // Hard cap so the search can never spin forever: the player may never die
+    // in the stepped sim (noclip, or a long hazard-free stretch) while no
+    // single-action path reaches the acceptable threshold. We also can't rewind
+    // further than the stored-frame buffer, so there is no point searching past
+    // it.
+    const uint32_t maxIters =
+        std::max<uint32_t>(1u, bot->practiceFix().m_maxStoredFrames->inner());
+    while (!pl->m_playerDied && iters < maxIters) {
         using Mode = SLSettings::TrajectorySettings::Mode;
 
         int mode = pl->m_player1->m_jumpBuffered ? Mode::Release : Mode::Hold;
@@ -461,12 +470,12 @@ void BotUpdater::findBestFrameCandidate() {
 
     uint32_t steps = std::min(this->getFrame() - bestFrame, iters);
 
+    // backwardsStep() defers the actual rewind to the next frozen tick, so
+    // getFrame() does NOT change synchronously here. The old fixup loop spun on
+    // `getFrame() != bestFrame` and could never make progress -> hard freeze
+    // whenever the best frame wasn't the oldest one. The scheduled rewind below
+    // already restores `steps` frames in one shot.
     this->backwardsStep(steps);
-
-    while (this->getFrame() != bestFrame && steps != iters &&
-           !Bot::get()->practiceFix().m_storedFrames.empty()) {
-        this->backwardsStep();  // sometimes happens, oh well
-    }
 
     m_predicting = false;
 
@@ -524,16 +533,19 @@ static void frameUpdateMidhook(SafetyHookContext&) {
 
     // geode::log::info("le xmm13: {}", ctx.xmm13.f64[0]);
 
+    PlayLayer* pll = PlayLayer::get();
+    auto& updater = bot->updater();
+
     if (!pl->m_playerDied) {
-        if (PlayLayer::get()) {
-            bot->updater().incrementFrame();
+        if (pll) {
+            updater.incrementFrame();
         }
 
         bot->hitboxes().saveToTrail(pl);
 
         auto trajectory = bot->trajectory().unsafeInner();
-        if (trajectory && bot->updater().m_fullGamePrediction->inner() &&
-            bot->updater().m_preventDeath->inner() && PlayLayer::get()) {
+        if (trajectory && pll && updater.m_fullGamePrediction->inner() &&
+            updater.m_preventDeath->inner()) {
             using Mode = SLSettings::TrajectorySettings::Mode;
 
             {
@@ -556,7 +568,10 @@ static void frameUpdateMidhook(SafetyHookContext&) {
                 }
             }
 
-            {
+            // P2 only matters in dual; running a full prediction on the
+            // inactive second player every frame is wasted work (and yields a
+            // meaningless score) in single-player levels.
+            if (pl->m_gameState.m_isDualMode) {
                 int mode = Mode::Player2;
                 mode |=
                     pl->m_player2->m_jumpBuffered ? Mode::Hold : Mode::Release;
@@ -578,7 +593,7 @@ static void frameUpdateMidhook(SafetyHookContext&) {
         }
     }
 
-    if (auto pll = PlayLayer::get(); pl) {
+    if (pll) {
         bot->autoclicker().update(pll);
     }
     // bot->updater().runFrozenTick();

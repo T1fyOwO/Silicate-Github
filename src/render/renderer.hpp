@@ -9,6 +9,7 @@
 // #include "dsp.hpp"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -93,7 +94,10 @@ class Renderer {
     geode::Result<> writeAudio(std::vector<float>& data, uint64_t pts);
     geode::Result<> stop();
 
-    void signalStop() { m_recording = false; }
+    void signalStop() {
+        m_recording = false;
+        m_recordCv.notify_one();
+    }
 
     void recordLoop();
 
@@ -197,7 +201,10 @@ class Renderer {
     m_audioPkt = {nullptr, SL_AV_DELETER(AVPacket, ff->av_packet_free)};
 
     float m_visualFps = 60.0f;
-    bool m_recording = false;
+    std::atomic<bool> m_recording = false;
+
+    std::mutex m_recordMutex;
+    std::condition_variable m_recordCv;
 
     int m_frameCount = 0;
     int m_audioFrameCount = 0;

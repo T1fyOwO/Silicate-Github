@@ -236,11 +236,13 @@ geode::Result<> Renderer::start() {
 
         namespace str = geode::utils::string;
 
-        str::replace(formatted, "%name%", pl->m_level->m_levelName);
-        str::replace(formatted, "%id%",
-                     std::to_string(pl->m_level->m_levelID.value()));
-        str::replace(formatted, "%creator%", pl->m_level->m_creatorName);
-        str::replace(formatted, "%rand%", std::to_string(randomNumber));
+        formatted = str::replace(formatted, "%name%", pl->m_level->m_levelName);
+        formatted = str::replace(
+            formatted, "%id%", std::to_string(pl->m_level->m_levelID.value()));
+        formatted =
+            str::replace(formatted, "%creator%", pl->m_level->m_creatorName);
+        formatted =
+            str::replace(formatted, "%rand%", std::to_string(randomNumber));
 
         fileName = formatted + "." + m_settings.m_extension;
     } else {
@@ -734,6 +736,12 @@ geode::Result<> Renderer::stop() {
 
 void Renderer::recordLoop() {
     while (m_recording || m_collected) {
+        {
+            std::unique_lock<std::mutex> lock(m_recordMutex);
+            m_recordCv.wait(lock,
+                            [this] { return m_collected || !m_recording; });
+        }
+
         if (m_collected) {
             {
                 auto ret = this->encode(m_buffer, m_bufferSize);
@@ -774,7 +782,11 @@ void Renderer::capture() {
         m_bufferPts = m_ptsQueue.front();
         m_ptsQueue.pop_front();
         // don't publish half updated shit
-        m_collected = true;
+        {
+            std::lock_guard<std::mutex> lock(m_recordMutex);
+            m_collected = true;
+        }
+        m_recordCv.notify_one();
     } else {
         m_halting = false;
     }

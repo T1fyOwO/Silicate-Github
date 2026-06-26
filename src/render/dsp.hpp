@@ -140,6 +140,7 @@ class AudioRecorder {
     FMOD::Sound* m_monSound = nullptr;
     FMOD::Channel* m_monChannel = nullptr;
     AudioMonitorRing m_monRing;
+    std::atomic<float> m_monVolume{1.0f};
 };
 
 #endif  // RECORDER_DSP_HPP

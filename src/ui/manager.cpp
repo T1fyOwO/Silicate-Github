@@ -429,6 +429,7 @@ void UIManager::setup() {
 static void preDrawBlurEffect(const ImDrawList*, const ImDrawCmd* cmd) {
     auto pos = ImGui::GetDrawData()->DisplayPos;
     auto sz = ImGui::GetDrawData()->DisplaySize;
+
     ImGuiHookCtx::get().preSampleBlur(
         ImVec4((cmd->ClipRect.x - pos.x) / sz.x,
                1.0 - ((cmd->ClipRect.w - pos.y) / sz.y),
@@ -1286,10 +1287,10 @@ void UIManager::draw() {
                     }
                 }
 
-                tabby::divider();
-
                 auto ar = AudioRecorder::get();
                 tabby::checkbox("Audio Preview", ar->m_audioPreview->inner());
+
+                tabby::divider();
 
                 tabby::text("Presets", m_medium);
 

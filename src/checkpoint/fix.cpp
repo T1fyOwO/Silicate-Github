@@ -145,6 +145,7 @@ void PracticeFix::restorePreviousFrame(
 }
 
 void PracticeFix::dropLastStoredFrame() {
+    if (m_storedFrames.empty()) return;
     m_storedFrames.back().m_checkpoint->release();
     m_storedFrames.pop_back();
 }

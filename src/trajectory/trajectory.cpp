@@ -52,20 +52,21 @@ int Trajectory::getPredictionLength() {
 }
 
 bool Trajectory::iterate(GJBaseGameLayer* pl, PlayerObject* player, int mode,
-                         float* colors, bool&,
-                         std::vector<TrajectoryPlayerData>& cached,
+                         float* colors, bool&, int& stepCount,
                          PredictionConfig config) {
     cocos2d::CCPoint position = player->getPosition();
 
-    pl->m_gameState.m_totalTime += Bot::get()->updater().getPhysicsDt();
-    pl->m_gameState.m_unkDouble3 += Bot::get()->updater().getPhysicsDt() /
-                                    Bot::get()->updater().getTimeWarp();
+    auto& updater = Bot::get()->updater();
+    const float physicsDt = updater.getPhysicsDt();
+    const float timeWarp = updater.getTimeWarp();
+
+    pl->m_gameState.m_totalTime += physicsDt;
+    pl->m_gameState.m_unkDouble3 += physicsDt / timeWarp;
     pl->m_gameState.m_currentProgress++;
     // pl->m_gameState.m_unkUint2++;
-    pl->m_gameState.m_unkUint5 +=
-        (int)roundf(Bot::get()->updater().getTimeWarp() * 1000.0f);
+    pl->m_gameState.m_unkUint5 += (int)roundf(timeWarp * 1000.0f);
 
-    player->m_totalTime += Bot::get()->updater().getPhysicsDt();
+    player->m_totalTime += physicsDt;
 
     float playerSpeed = *(float*)(&pl->m_gameState.m_timeModRelated);
     if (playerSpeed != 0.0) {
@@ -84,7 +85,7 @@ bool Trajectory::iterate(GJBaseGameLayer* pl, PlayerObject* player, int mode,
 
     if (((m_deadP1 && (mode & TrajectoryMode::Player1) != 0) ||
          (m_deadP2 && (mode & TrajectoryMode::Player2) != 0))) {
-        if (cached.size() > 1) {
+        if (stepCount > 1) {
             drawHitbox(player);
         }
         return true;
@@ -94,19 +95,21 @@ bool Trajectory::iterate(GJBaseGameLayer* pl, PlayerObject* player, int mode,
     // pl->processMoveActionsStep(m_delta / 60.0f, true);
     // pl->m_effectManager->postMoveActions();
 
-    for (auto& action : m_actions) {
-        if (action.m_delay == 0) {
-            // geode::log::info("executing action at pseudo-frame {}",
-            // pl->m_gameState.m_currentProgress - 1);
-            action.m_func();
-            action.m_executed = true;
-            continue;
+    if (!m_actions.empty()) {
+        for (auto& action : m_actions) {
+            if (action.m_delay == 0) {
+                // geode::log::info("executing action at pseudo-frame {}",
+                // pl->m_gameState.m_currentProgress - 1);
+                action.m_func();
+                action.m_executed = true;
+                continue;
+            }
+
+            action.m_delay--;
         }
 
-        action.m_delay--;
+        std::erase_if(m_actions, [](auto& a) { return a.m_executed; });
     }
-
-    std::erase_if(m_actions, [](auto& a) { return a.m_executed; });
 
     float delta = config.m_overridenTPS == 0.0
                       ? m_delta
@@ -140,37 +143,26 @@ bool Trajectory::iterate(GJBaseGameLayer* pl, PlayerObject* player, int mode,
     //     toCocosColor(colors));
     // }
 
-    cached.emplace_back(TrajectoryPlayerData{
-        player->getPosition(), player->getObjectRect(),
-        player->getObjectRect(0.3, 0.3), player->getRotation(),
-        player == m_fakePlayer1, (mode & TrajectoryMode::Hold) != 0, 0});
+    stepCount++;
 
     return false;  // continue iteration
 }
 
-TrajectoryPlayerData Trajectory::runPrediction(
-    GJBaseGameLayer* pl, PlayerObject* player, PlayerObject* other, int mode,
-    float* colors, bool both, CacheMap& cached, PredictionConfig config) {
+TrajectoryPlayerData Trajectory::runPrediction(GJBaseGameLayer* pl,
+                                               PlayerObject* player,
+                                               PlayerObject* other, int mode,
+                                               float* colors, bool both,
+                                               PredictionConfig config) {
     auto bot = Bot::get();
     bool hasPerformedClick = false;
     bool hasPerformedClickOther = false;
 
-    cached.emplace(mode | TrajectoryMode::Player1,
-                   std::vector<TrajectoryPlayerData>());
     const int iterations = m_state->m_length->inner() *
                            std::max(bot->updater().getTps(), 240.0) /
                            pl->m_gameState.m_timeWarp;
 
-    cached[mode | TrajectoryMode::Player1].reserve(iterations);
-    if (both && pl->m_gameState.m_isDualMode) {
-        cached.emplace(mode | TrajectoryMode::Player2,
-                       std::vector<TrajectoryPlayerData>());
-        cached[mode | TrajectoryMode::Player2].reserve(iterations);
-    }
-
     int playerMask = (player == m_fakePlayer1) ? TrajectoryMode::Player1
                                                : TrajectoryMode::Player2;
-    int platformerMask = pl->m_isPlatformer ? TrajectoryMode::Platformer : 0;
 
     std::array<PlayerObject*, 2> players = {player, other};
     int count = (both && pl->m_gameState.m_isDualMode) ? 2 : 1;
@@ -227,13 +219,15 @@ TrajectoryPlayerData Trajectory::runPrediction(
     bool breakIterationP1 = false;
     bool breakIterationP2 = false;
 
+    int stepCountP1 = 0;
+    int stepCountP2 = 0;
+
     int trajectoryInputIndex = Bot::get()->replaySystem().getInputIndex();
     const std::vector<slc::Action>& inputs =
         Bot::get()->replaySystem().m_actionAtom.m_actions;
 
     int predCount = 0;
-    for (int i = 0; i < this->getPredictionLength() && i <= config.m_maxLength;
-         i++) {
+    for (int i = 0; i < iterations && i <= config.m_maxLength; i++) {
         if (Bot::get()->isPlaying()) {
             uint64_t frame = Bot::get()->updater().getFrame() + i;
 
@@ -266,17 +260,15 @@ TrajectoryPlayerData Trajectory::runPrediction(
         }
 
         if (!breakIterationP1) {
-            breakIterationP1 = this->iterate(
-                pl, player, mode | playerMask, colors, hasPerformedClick,
-                cached[mode | platformerMask | playerMask], config);
+            breakIterationP1 =
+                this->iterate(pl, player, mode | playerMask, colors,
+                              hasPerformedClick, stepCountP1, config);
             predCount++;
         }
         if (both && pl->m_gameState.m_isDualMode && !breakIterationP2) {
-            breakIterationP2 = this->iterate(
-                pl, other, mode | TrajectoryMode::Player2, colors,
-                hasPerformedClickOther,
-                cached[mode | platformerMask | TrajectoryMode::Player2],
-                config);
+            breakIterationP2 =
+                this->iterate(pl, other, mode | TrajectoryMode::Player2, colors,
+                              hasPerformedClickOther, stepCountP2, config);
         }
     }
 
@@ -370,7 +362,7 @@ TrajectoryPlayerData Trajectory::simulate(GJBaseGameLayer* pl, bool p1,
                         .colors.data();
 
     auto predicted = this->runPrediction(pl, player, otherPlayer, mode, colors,
-                                         clickBothPlayers, m_data, config);
+                                         clickBothPlayers, config);
 
     player->setVisible(false);
     otherPlayer->setVisible(false);
@@ -473,6 +465,102 @@ static void drawRotatedRect(CCDrawNode* node, CCRect& rect, float angle,
                       width, color);
 }
 
+static uint64_t packPlayerFlags(PlayerObject* p) {
+    uint64_t flags = 0;
+    int bit = 0;
+    auto set = [&](bool v) {
+        if (v) flags |= (uint64_t(1) << bit);
+        bit++;
+    };
+    set(p->m_isShip);
+    set(p->m_isBird);
+    set(p->m_isDart);
+    set(p->m_isSwing);
+    set(p->m_isBall);
+    set(p->m_isSpider);
+    set(p->m_isRobot);
+    set(p->m_isUpsideDown);
+    set(p->m_isDead);
+    set(p->m_isOnGround2);
+    set(p->m_isSideways);
+    set(p->m_isDashing);
+    set(p->m_isAccelerating);
+    set(p->m_holdingLeft);
+    set(p->m_holdingRight);
+    set(p->m_jumpBuffered);
+    set(p->m_isPlatformer);
+    set(p->m_isGoingLeft);
+    set(p->m_maybeIsBoosted);
+    return flags;
+}
+
+// thank you clanker
+static size_t hashTrajectoryCategories() {
+    size_t h = 0;
+    for (const auto& [key, state] : SLSettings::get()->trajectory.categories) {
+        size_t e = std::hash<int>{}(key);
+        e = e * 31 + (state.enabled ? 1u : 0u);
+        for (const float c : state.colors) {
+            e = e * 31 + std::hash<float>{}(c);
+        }
+        // order-independent combine (keys are unique)
+        h ^= e + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+    }
+    return h;
+}
+
+Trajectory::Signature Trajectory::computeSignature(GJBaseGameLayer* pl) {
+    Signature s;
+    s.frame = Bot::get()->updater().getFrame();
+
+    if (PlayerObject* p = pl->m_player1) {
+        const cocos2d::CCPoint pos = p->getPosition();
+        s.p1[0] = pos.x;
+        s.p1[1] = pos.y;
+        s.p1[2] = p->getRotation();
+        s.p1[3] = p->m_yVelocity;
+        s.p1[4] = p->m_platformerXVelocity;
+        s.p1[5] = p->m_gravityMod;
+        s.p1[6] = p->m_vehicleSize;
+        s.p1flags = packPlayerFlags(p);
+    }
+    if (PlayerObject* p = pl->m_player2) {
+        const cocos2d::CCPoint pos = p->getPosition();
+        s.p2[0] = pos.x;
+        s.p2[1] = pos.y;
+        s.p2[2] = p->getRotation();
+        s.p2[3] = p->m_yVelocity;
+        s.p2[4] = p->m_platformerXVelocity;
+        s.p2[5] = p->m_gravityMod;
+        s.p2[6] = p->m_vehicleSize;
+        s.p2flags = packPlayerFlags(p);
+    }
+
+    s.timeWarp = pl->m_gameState.m_timeWarp;
+    s.cameraZoom = pl->m_gameState.m_cameraZoom;
+    s.width = m_state->m_width->inner();
+    s.length = m_state->m_length->inner();
+
+    uint32_t b = 0;
+    int bit = 0;
+    auto setb = [&](bool v) {
+        if (v) b |= (uint32_t(1) << bit);
+        bit++;
+    };
+    setb(m_state->m_enabled->inner());
+    setb(pl->m_gameState.m_isDualMode);
+    setb(pl->m_isPlatformer);
+    setb(pl->m_levelSettings->m_twoPlayerMode);
+    setb(m_p1Holding);
+    setb(m_p2Holding);
+    setb(pl->m_player1 != nullptr);
+    setb(pl->m_player2 != nullptr);
+    s.boolPack = b;
+
+    s.categoriesHash = hashTrajectoryCategories();
+    return s;
+}
+
 void Trajectory::update(GJBaseGameLayer* pl) {
     if (!pl) return;
 
@@ -489,23 +577,28 @@ void Trajectory::update(GJBaseGameLayer* pl) {
         return;
     }
 
-    m_drawing = true;
     m_node->setVisible(true);
 
-    // m_node->setZOrder(999);
-    m_node->clear();
+    Signature signature = computeSignature(pl);
+    bool needsRebuild = !m_calculated || !(signature == m_lastSignature);
 
-    auto bot = Bot::get();
-    m_lastFrame = bot->updater().getFrame();
-    m_data.clear();
-    m_delta = bot->updater().getPhysicsDt() * 60.0f;
+    if (needsRebuild) {
+        m_drawing = true;
 
-    m_fakePlayer1->setVisible(false);
-    if (pl->m_player2) {
-        m_fakePlayer2->setVisible(false);
+        // m_node->setZOrder(999);
+        m_node->clear();
+
+        auto bot = Bot::get();
+        m_lastFrame = bot->updater().getFrame();
+        m_delta = bot->updater().getPhysicsDt() * 60.0f;
+
+        m_fakePlayer1->setVisible(false);
+        if (pl->m_player2) {
+            m_fakePlayer2->setVisible(false);
+        }
     }
 
-    if (pl->m_player1) {
+    if (needsRebuild && pl->m_player1) {
         simulate(pl, true, TrajectoryMode::Hold,
                  !pl->m_levelSettings->m_twoPlayerMode);
         simulate(pl, true, TrajectoryMode::Swift,
@@ -533,7 +626,7 @@ void Trajectory::update(GJBaseGameLayer* pl) {
             m_fakePlayer2->setVisible(false);
         }
     }
-    if (pl->m_player2 && pl->m_gameState.m_isDualMode &&
+    if (needsRebuild && pl->m_player2 && pl->m_gameState.m_isDualMode &&
         pl->m_levelSettings->m_twoPlayerMode) {
         simulate(pl, false, TrajectoryMode::Hold, false);
         simulate(pl, false, TrajectoryMode::Swift, false);
@@ -555,8 +648,11 @@ void Trajectory::update(GJBaseGameLayer* pl) {
         }
     }
 
-    m_calculated = true;
-    m_drawing = false;
+    if (needsRebuild) {
+        m_calculated = true;
+        m_lastSignature = signature;
+        m_drawing = false;
+    }
 
     auto& updater = Bot::get()->updater();
     if (updater.m_layoutMode->inner() && !LevelEditorLayer::get()) {
@@ -623,9 +719,9 @@ bool Trajectory::playerHasActivated(PlayerObject* player,
     }
 
     if (player == m_fakePlayer1) {
-        return m_activatedObjectsP1[(uintptr_t)object];
+        return m_activatedObjectsP1.contains((uintptr_t)object);
     } else if (player == m_fakePlayer2) {
-        return m_activatedObjectsP2[(uintptr_t)object];
+        return m_activatedObjectsP2.contains((uintptr_t)object);
     }
 
     return false;

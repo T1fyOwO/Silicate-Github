@@ -5,7 +5,7 @@
 #include <Geode/binding/GJBaseGameLayer.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <functional>
-#include <unordered_map>
+#include <unordered_set>
 
 #include "../settings/settings.hpp"
 #include "../shared/value/value.hpp"
@@ -69,8 +69,8 @@ class Trajectory {
     PlayerObject* m_fakePlayer2;
 
    private:
-    std::unordered_map<uintptr_t, bool> m_activatedObjectsP1;
-    std::unordered_map<uintptr_t, bool> m_activatedObjectsP2;
+    std::unordered_set<uintptr_t> m_activatedObjectsP1;
+    std::unordered_set<uintptr_t> m_activatedObjectsP2;
 
     struct TrajectoryAction {
         int m_delay;
@@ -79,10 +79,26 @@ class Trajectory {
     };
     std::vector<TrajectoryAction> m_actions;
 
-    using CacheMap = std::unordered_map<int, std::vector<TrajectoryPlayerData>>;
-    CacheMap m_data;
     uint64_t m_lastFrame = 0;
     bool m_calculated = false;
+
+    struct Signature {
+        uint32_t frame = 0;
+        // x, y, rotation, yVelocity, platformerXVelocity, gravityMod, size
+        float p1[7] = {};
+        uint64_t p1flags = 0;
+        float p2[7] = {};
+        uint64_t p2flags = 0;
+        float timeWarp = 0.0f;
+        float cameraZoom = 0.0f;
+        float width = 0.0f;
+        float length = 0.0f;
+        uint32_t boolPack = 0;
+        size_t categoriesHash = 0;
+
+        bool operator==(const Signature&) const = default;
+    };
+    Signature m_lastSignature;
 
     bool m_drawing;
     bool m_deadP1;
@@ -186,17 +202,19 @@ class Trajectory {
 
     int getPredictionLength();
 
-    void invalidateCache() { m_lastFrame = UINT64_MAX; }
+    void invalidateCache() {
+        m_lastFrame = UINT64_MAX;
+        m_calculated = false;
+    }
+    Signature computeSignature(GJBaseGameLayer* pl);
     bool iterate(GJBaseGameLayer* pl, PlayerObject* player, int mode,
-                 float* colors, bool& hasHeld,
-                 std::vector<TrajectoryPlayerData>& cached,
+                 float* colors, bool& hasHeld, int& stepCount,
                  PredictionConfig config);
 
     TrajectoryPlayerData runPrediction(GJBaseGameLayer* pl,
                                        PlayerObject* player,
                                        PlayerObject* other, int mode,
                                        float* colors, bool both,
-                                       CacheMap& cached,
                                        PredictionConfig config);
     TrajectoryPlayerData simulate(GJBaseGameLayer* pl, bool p1, int mode,
                                   bool clickBothPlayers,
@@ -212,9 +230,9 @@ class Trajectory {
     void rememberActivatedObject(EnhancedGameObject* object,
                                  PlayerObject* player) {
         if (player == m_fakePlayer1) {
-            m_activatedObjectsP1[(uintptr_t)object] = true;
+            m_activatedObjectsP1.insert((uintptr_t)object);
         } else if (player == m_fakePlayer2) {
-            m_activatedObjectsP2[(uintptr_t)object] = true;
+            m_activatedObjectsP2.insert((uintptr_t)object);
         }
     }
 

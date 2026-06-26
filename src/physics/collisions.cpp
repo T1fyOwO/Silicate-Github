@@ -338,10 +338,10 @@ void collisionCheckObjects(GJBaseGameLayer* pl, PlayerObject* player,
 
     CCRect playerRect = player->getObjectRect();
 
-    [[maybe_unused]] float playerMinX = player->getObjectRect().getMinX();
-    [[maybe_unused]] float playerMaxX = player->getObjectRect().getMaxX();
-    [[maybe_unused]] float playerMinY = player->getObjectRect().getMinY();
-    [[maybe_unused]] float playerMaxY = player->getObjectRect().getMaxY();
+    [[maybe_unused]] float playerMinX = playerRect.getMinX();
+    [[maybe_unused]] float playerMaxX = playerRect.getMaxX();
+    [[maybe_unused]] float playerMinY = playerRect.getMinY();
+    [[maybe_unused]] float playerMaxY = playerRect.getMaxY();
 
     for (int i = 0; i < objectCount; i++) {
         GameObject* object = objects->at(i);

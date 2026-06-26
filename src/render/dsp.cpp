@@ -40,9 +40,16 @@ FMOD_RESULT F_CALLBACK AudioRecorder::writeCallback(FMOD_DSP_STATE*,
 
 FMOD_RESULT F_CALLBACK AudioRecorder::monitorReadCallback(
     FMOD_SOUND*, void* data, unsigned int datalen) {
+    auto* recorder = AudioRecorder::get();
     auto* out = static_cast<float*>(data);
     const unsigned int n = datalen / sizeof(float);
-    const size_t got = AudioRecorder::get()->m_monRing.pop(out, n);
+    const size_t got = recorder->m_monRing.pop(out, n);
+
+    const float gain = recorder->m_monVolume.load(std::memory_order_relaxed);
+    for (size_t i = 0; i < got; ++i) {
+        out[i] *= gain;
+    }
+
     if (got < n) {
         std::memset(out + got, 0, (n - got) * sizeof(float));
     }
@@ -56,7 +63,6 @@ void AudioRecorder::haltWithData(float* data, unsigned int length) {
 
     m_buffer.insert(m_buffer.end(), data, data + length);
 
-#pragma omp parallel for
     for (size_t i = m_buffer.size() - length; i < m_buffer.size(); i++) {
         m_buffer[i] = std::clamp(m_buffer[i], -1.0f, 1.0f);
     }
@@ -114,11 +120,7 @@ void AudioRecorder::attach(double musicVolume, double sfxVolume) {
 
     if (m_audioPreview->inner()) {
         startMonitor();
-        if (m_monChannel) {
-            // Scale the preview by the engine's music volume (kept in sync each
-            // frame in unpause()).
-            m_monChannel->setVolume(engine->getBackgroundMusicVolume());
-        }
+        m_monVolume.store(m_previousMusicVolume, std::memory_order_relaxed);
     }
 
     m_attached = true;
@@ -230,9 +232,6 @@ void AudioRecorder::unpause() {
     m_shouldUpdateFmod = false;
 
     if (m_monSystem) {
-        if (m_monChannel) {
-            m_monChannel->setVolume(engine->getBackgroundMusicVolume());
-        }
         m_monSystem->update();
     }
 }

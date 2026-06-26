@@ -192,11 +192,35 @@ static void iterateObjects(GJBaseGameLayer* pl,
 const std::array ALWAYS_ALLOWED_MODIFIERS = {200,  201,  202, 203,
                                              1334, 1816, 3643};
 
+struct ResolvedHBCategory {
+    bool enabled;
+    cocos2d::ccColor4F line;
+    cocos2d::ccColor4F fill;
+};
+
+static ResolvedHBCategory resolveHB(SLSettings::HitboxSettings& settings,
+                                    int type) {
+    auto& s = settings.categories[type];
+    const float a = s.colors[3];
+    return ResolvedHBCategory{
+        .enabled = s.enabled,
+        .line = {s.colors[0], s.colors[1], s.colors[2], a},
+        .fill = {s.colors[0], s.colors[1], s.colors[2],
+                 a * static_cast<float>(s.fillOpacity)},
+    };
+}
+
+struct ResolvedObjectHB {
+    float width;
+    ResolvedHBCategory interactable;
+    ResolvedHBCategory solid;
+    ResolvedHBCategory passable;
+    ResolvedHBCategory hazard;
+};
+
 static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
-                             GameObject* object,
-                             SLSettings::HitboxSettings& settings) {
-    using Type = SLSettings::HitboxSettings::Type;
-    const float width = settings.width / pl->m_gameState.m_cameraZoom;
+                             GameObject* object, const ResolvedObjectHB& hb) {
+    const float width = hb.width;
 
     if (object->m_isGroupDisabled || !object->m_isActivated ||
         object->m_objectType == GameObjectType::Decoration)
@@ -215,32 +239,33 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
                 return;
             }
 
+            if (object == pl->m_player1CollisionBlock ||
+                object == pl->m_player2CollisionBlock) {
+                return;
+            }
+
             if (object->m_objectType == GameObjectType::Modifier &&
                 std::ranges::find(ALWAYS_ALLOWED_MODIFIERS,
                                   object->m_objectID) ==
                     ALWAYS_ALLOWED_MODIFIERS.end()) {
-                if (auto obj =
-                        geode::cast::typeinfo_cast<EffectGameObject*>(object);
-                    !obj->m_isTouchTriggered) {
+                if (!static_cast<EffectGameObject*>(object)
+                         ->m_isTouchTriggered) {
                     return;
                 }
             }
+
+            if (!hb.interactable.enabled) break;
 
             bool isObjectRectDirty = object->m_isObjectRectDirty;
             bool boxOffsetCalculated = object->m_boxOffsetCalculated;
 
             if (auto ob = object->m_orientedBox; ob) {
-                if (HB_ENABLED(Type::Interactable)) {
-                    node->drawPolygon(ob->m_corners.data(), 4,
-                                      CC_FILL_COLOR(Type::Interactable), width,
-                                      CC_COLOR(Type::Interactable));
-                }
+                node->drawPolygon(ob->m_corners.data(), 4, hb.interactable.fill,
+                                  width, hb.interactable.line);
             } else {
-                if (HB_ENABLED(Type::Interactable)) {
-                    node->drawRect(usingWidth(object->getObjectRect(), width),
-                                   CC_FILL_COLOR(Type::Interactable), width,
-                                   CC_COLOR(Type::Interactable));
-                }
+                node->drawRect(usingWidth(object->getObjectRect(), width),
+                               hb.interactable.fill, width,
+                               hb.interactable.line);
             }
 
             object->m_isObjectRectDirty = isObjectRectDirty;
@@ -248,23 +273,12 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
             break;
         }
 
-        case GameObjectType::CollisionObject: {
-            return;  // this took me too long to figure out tbh
-        }
-
         case GameObjectType::Solid: {
-            if (object->m_isPassable) {
-                if (HB_ENABLED(Type::Passable)) {
-                    node->drawRect(usingWidth(object->getObjectRect(), width),
-                                   CC_FILL_COLOR(Type::Passable), width,
-                                   CC_COLOR(Type::Passable));
-                }
-            } else {
-                if (HB_ENABLED(Type::Solid)) {
-                    node->drawRect(usingWidth(object->getObjectRect(), width),
-                                   CC_FILL_COLOR(Type::Solid), width,
-                                   CC_COLOR(Type::Solid));
-                }
+            const ResolvedHBCategory& cat =
+                object->m_isPassable ? hb.passable : hb.solid;
+            if (cat.enabled) {
+                node->drawRect(usingWidth(object->getObjectRect(), width),
+                               cat.fill, width, cat.line);
             }
 
             break;
@@ -294,18 +308,10 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
                     break;
             };
 
-            if (object->m_isPassable) {
-                if (HB_ENABLED(Type::Passable)) {
-                    node->drawPolygon(verts.data(), 3,
-                                      CC_FILL_COLOR(Type::Passable), width,
-                                      CC_COLOR(Type::Passable));
-                }
-            } else {
-                if (HB_ENABLED(Type::Solid)) {
-                    node->drawPolygon(verts.data(), 3,
-                                      CC_FILL_COLOR(Type::Solid), width,
-                                      CC_COLOR(Type::Solid));
-                }
+            const ResolvedHBCategory& cat =
+                object->m_isPassable ? hb.passable : hb.solid;
+            if (cat.enabled) {
+                node->drawPolygon(verts.data(), 3, cat.fill, width, cat.line);
             }
 
             break;
@@ -315,7 +321,7 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
         case GameObjectType::Hazard: {
             if (!object->m_isActivated) return;
             if (object == pl->m_anticheatSpike) return;
-            if (!HB_ENABLED(Type::Hazard)) return;
+            if (!hb.hazard.enabled) return;
 
             // ripped from updateDebugDraw
             bool isObjectRectDirty = object->m_isObjectRectDirty;
@@ -326,17 +332,14 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
             if (radius > 0) {
                 int segments = (int)std::max(radius, 8.0f);
 
-                node->drawCircle(object->getPosition(), radius,
-                                 CC_FILL_COLOR(Type::Hazard), width,
-                                 CC_COLOR(Type::Hazard), segments);
+                node->drawCircle(object->getPosition(), radius, hb.hazard.fill,
+                                 width, hb.hazard.line, segments);
             } else if (auto ob = object->m_orientedBox; ob) {
-                node->drawPolygon(ob->m_corners.data(), 4,
-                                  CC_FILL_COLOR(Type::Hazard), width,
-                                  CC_COLOR(Type::Hazard));
+                node->drawPolygon(ob->m_corners.data(), 4, hb.hazard.fill,
+                                  width, hb.hazard.line);
             } else {
                 node->drawRect(usingWidth(object->getObjectRect(), width),
-                               CC_FILL_COLOR(Type::Hazard), width,
-                               CC_COLOR(Type::Hazard));
+                               hb.hazard.fill, width, hb.hazard.line);
             }
 
             object->m_isObjectRectDirty = isObjectRectDirty;
@@ -400,9 +403,28 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
             settings.categories[Type::PlayerInner].colors.data();
         float innerFill = settings.categories[Type::PlayerInner].fillOpacity;
 
+        const float objX = pl->m_objectLayer->getPositionX();
+        const float objY = pl->m_objectLayer->getPositionY();
+
         auto drawTrail = [&](std::deque<HitboxTrailUnit>& trail) {
+            bool hasLast = false;
+            int lastPx = 0;
+            int lastPy = 0;
             for (auto& unit : trail) {
                 if (!unit.shouldDraw(minX, maxX, minY, maxY)) continue;
+
+                // Collapse consecutive segments that map to the same on-screen
+                // pixel; keeps the trail as dense as the current zoom allows
+                // without overdrawing identical positions.
+                const float SUBPIXEL_FACTOR = 3;
+                const int px = static_cast<int>(std::floor(
+                    (unit.m_rect.getMidX() * scale + objX) * SUBPIXEL_FACTOR));
+                const int py = static_cast<int>(std::floor(
+                    (unit.m_rect.getMidY() * scale + objY) * SUBPIXEL_FACTOR));
+                if (hasLast && px == lastPx && py == lastPy) continue;
+                hasLast = true;
+                lastPx = px;
+                lastPy = py;
 
                 if (eRotated)
                     unit.drawRotated(m_rotatedTrailDrawNode, width,
@@ -425,10 +447,22 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
         }
     }
 
-    iterateObjects(pl, [&](GameObject* object) {
-        drawObjectHitbox(this->m_drawNode, pl, object,
-                         SLSettings::get()->hitboxes);
-    });
+    {
+        using Type = SLSettings::HitboxSettings::Type;
+        auto& hbs = SLSettings::get()->hitboxes;
+        const ResolvedObjectHB objHB{
+            .width =
+                static_cast<float>(hbs.width / pl->m_gameState.m_cameraZoom),
+            .interactable = resolveHB(hbs, Type::Interactable),
+            .solid = resolveHB(hbs, Type::Solid),
+            .passable = resolveHB(hbs, Type::Passable),
+            .hazard = resolveHB(hbs, Type::Hazard),
+        };
+
+        iterateObjects(pl, [&](GameObject* object) {
+            drawObjectHitbox(this->m_drawNode, pl, object, objHB);
+        });
+    }
 
     drawPlayerHitbox(this->m_drawNode, pl, pl->m_player1,
                      SLSettings::get()->hitboxes);
@@ -438,22 +472,7 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
     }
 }
 
-static constexpr float TRAIL_SPACING_FACTOR = 0.34f;
-static constexpr float TRAIL_MIN_SPACING = 2.0f;
 static constexpr size_t TRAIL_MAX_UNITS = 69420;
-
-static bool trailMovedEnough(const std::deque<HitboxTrailUnit>& trail,
-                             const cocos2d::CCRect& rect) {
-    if (trail.empty()) return true;
-
-    const auto& last = trail.back().m_rect;
-    const float dx = rect.getMidX() - last.getMidX();
-    const float dy = rect.getMidY() - last.getMidY();
-    const float threshold =
-        std::max(rect.size.width * TRAIL_SPACING_FACTOR, TRAIL_MIN_SPACING);
-
-    return (dx * dx + dy * dy) >= threshold * threshold;
-}
 
 static void appendTrailUnit(std::deque<HitboxTrailUnit>& trail,
                             PlayerObject* player, const cocos2d::CCRect& rect) {
@@ -474,15 +493,12 @@ void Hitboxes::saveToTrail(GJBaseGameLayer* pl) {
         return;  // don't
     }
 
-    auto rect1 = pl->m_player1->getObjectRect();
-    if (trailMovedEnough(m_trailP1, rect1)) {
-        appendTrailUnit(m_trailP1, pl->m_player1, rect1);
+    if (!m_enabled->inner() || !m_trailEnabled->inner()) {
+        return;
     }
 
-    auto rect2 = pl->m_player2->getObjectRect();
-    if (trailMovedEnough(m_trailP2, rect2)) {
-        appendTrailUnit(m_trailP2, pl->m_player2, rect2);
-    }
+    appendTrailUnit(m_trailP1, pl->m_player1, pl->m_player1->getObjectRect());
+    appendTrailUnit(m_trailP2, pl->m_player2, pl->m_player2->getObjectRect());
 }
 
 void Hitboxes::clearTrail() {
