@@ -7,11 +7,10 @@
 #include "Geode/cocos/CCDirector.h"
 #include "Geode/cocos/platform/win32/CCGL.h"
 #include "context/context.hpp"
+#include "imgui.h"
 #include "render/renderer.hpp"
 #include "replay/system.hpp"
 #include "ui/manager.hpp"
-// this is horrible but it works
-#include "../../lib/tabby/lib/imgui_lib/imgui.h"
 
 using namespace geode::prelude;
 

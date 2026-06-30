@@ -128,14 +128,6 @@ jobs:
           geode sdk update "$GEODE_VERSION"
           geode sdk install-binaries --platform win --version "$GEODE_VERSION"
 
-      - name: Clone Tabby
-        run: |
-          rm -rf lib/tabby
-          git clone https://github.com/silicate-bot/tabby
-          cd lib/tabby
-          git checkout legacy-v1
-          cd
-
       - name: Build
         run: 
           cmake -S . -B build -G "Ninja" \

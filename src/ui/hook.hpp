@@ -12,8 +12,8 @@
 #include <Geode/modify/CCEGLView.hpp>
 #include <tabby.hpp>
 
-#include "../../lib/tabby/lib/imgui_lib/imgui.h"
 #include "bot/bot.hpp"
+#include "imgui.h"
 #include "render/pass.hpp"
 #include "theme.hpp"
 #include "ui/manager.hpp"

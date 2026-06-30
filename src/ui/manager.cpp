@@ -24,7 +24,7 @@
 #include "shared/keys.hpp"
 #include "trajectory/trajectory.hpp"
 // #include "widgets/hotkey.hpp"
-#include "../../lib/tabby/lib/imgui_lib/imgui.h"
+#include "imgui.h"
 #include "util/config.hpp"
 #include "widgets/checkbox.hpp"
 #include "widgets/image.hpp"
