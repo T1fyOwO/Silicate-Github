@@ -129,15 +129,15 @@ jobs:
           geode sdk install-binaries --platform win --version "$GEODE_VERSION"
 
       - name: Build
-        run: 
+        run: |
           cmake -S . -B build -G "Ninja" \
-          -DCMAKE_TOOLCHAIN_FILE=$HOME/.local/share/Geode/cross-tools/clang-msvc-sdk/clang-cl-msvc.cmake \
-          -DSPLAT_DIR=$HOME/.local/share/Geode/cross-tools/splat \
-          -DHOST_ARCH=x64 \
-          -DCMAKE_C_COMPILER_LAUNCHER=sccache \
-          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-          -DGEODE_DONT_INSTALL_MODS=ON
+            -DCMAKE_TOOLCHAIN_FILE=$HOME/.local/share/Geode/cross-tools/clang-msvc-sdk/clang-cl-msvc.cmake \
+            -DSPLAT_DIR=$HOME/.local/share/Geode/cross-tools/splat \
+            -DHOST_ARCH=x64 \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DGEODE_DONT_INSTALL_MODS=ON
           cmake --build build --config RelWithDebInfo --parallel
 
       - name: Collect .geode package
