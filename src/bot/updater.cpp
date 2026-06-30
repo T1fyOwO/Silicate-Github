@@ -438,11 +438,7 @@ void BotUpdater::findBestFrameCandidate() {
                          m_acceptablePrediction->inner());
 
     m_predicting = true;
-    // Hard cap so the search can never spin forever: the player may never die
-    // in the stepped sim (noclip, or a long hazard-free stretch) while no
-    // single-action path reaches the acceptable threshold. We also can't rewind
-    // further than the stored-frame buffer, so there is no point searching past
-    // it.
+
     const uint32_t maxIters =
         std::max<uint32_t>(1u, bot->practiceFix().m_maxStoredFrames->inner());
     while (!pl->m_playerDied && iters < maxIters) {
@@ -469,12 +465,6 @@ void BotUpdater::findBestFrameCandidate() {
     }
 
     uint32_t steps = std::min(this->getFrame() - bestFrame, iters);
-
-    // backwardsStep() defers the actual rewind to the next frozen tick, so
-    // getFrame() does NOT change synchronously here. The old fixup loop spun on
-    // `getFrame() != bestFrame` and could never make progress -> hard freeze
-    // whenever the best frame wasn't the oldest one. The scheduled rewind below
-    // already restores `steps` frames in one shot.
     this->backwardsStep(steps);
 
     m_predicting = false;
@@ -568,9 +558,6 @@ static void frameUpdateMidhook(SafetyHookContext&) {
                 }
             }
 
-            // P2 only matters in dual; running a full prediction on the
-            // inactive second player every frame is wasted work (and yields a
-            // meaningless score) in single-player levels.
             if (pl->m_gameState.m_isDualMode) {
                 int mode = Mode::Player2;
                 mode |=

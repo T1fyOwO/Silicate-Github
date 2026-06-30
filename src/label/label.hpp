@@ -59,14 +59,6 @@ class Label {
     CCPoint m_position = CCPoint(0.0f, 0.0f);
     CCPoint m_cocosAnchor = CCPoint(0.0f, 0.0f);
 
-    // Per-frame caches to avoid redoing constant work every tick: the resolved
-    // cocos child id, the label node itself (valid while still parented to the
-    // same layer), and the last string pushed (to skip glyph rebuilds).
-    CCLabelBMFont* m_label = nullptr;
-    cocos2d::CCNode* m_labelLayer = nullptr;
-    std::string m_cachedId;
-    std::string m_lastString;
-
    public:
     Label() = default;
     Label(std::string id, std::string friendly,

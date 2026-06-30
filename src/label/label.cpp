@@ -233,42 +233,33 @@ void LabelManager::writeToConfig() {
 
 CCLabelBMFont* Label::get() {
     auto pl = PlayLayer::get();
-    if (!pl) return nullptr;
+    CCLabelBMFont* label = nullptr;
 
-    if (m_label && m_labelLayer == pl) {
-        return m_label;
+    std::string cocosLabelID =
+        fmt::format("{}/label.{}", Mod::get()->getID(), m_id);
+    if (pl) {
+        if (auto l = pl->getChildByID(cocosLabelID); l) {
+            return dynamic_cast<CCLabelBMFont*>(l);
+        }
+
+        switch (m_config.m_font) {
+            case LabelFont::BigFont:
+                m_font = "bigFont.fnt";
+                break;
+            case LabelFont::ChatFont:
+                m_font = "chatFont.fnt";
+                break;
+        }
+
+        label = CCLabelBMFont::create(m_display().c_str(), m_font.c_str());
+
+        label->setID(cocosLabelID);
+        label->setScale(m_config.m_scale);
+        // this->calculatePosition(0, label);
+
+        PlayLayer::get()->addChild(label, 1000);
     }
 
-    if (m_cachedId.empty()) {
-        m_cachedId = fmt::format("{}/label.{}", Mod::get()->getID(), m_id);
-    }
-
-    if (auto l = pl->getChildByID(m_cachedId); l) {
-        m_label = dynamic_cast<CCLabelBMFont*>(l);
-        m_labelLayer = pl;
-        return m_label;
-    }
-
-    switch (m_config.m_font) {
-        case LabelFont::BigFont:
-            m_font = "bigFont.fnt";
-            break;
-        case LabelFont::ChatFont:
-            m_font = "chatFont.fnt";
-            break;
-    }
-
-    CCLabelBMFont* label =
-        CCLabelBMFont::create(m_display().c_str(), m_font.c_str());
-
-    label->setID(m_cachedId);
-    label->setScale(m_config.m_scale);
-    // this->calculatePosition(0, label);
-
-    pl->addChild(label, 1000);
-
-    m_label = label;
-    m_labelLayer = pl;
     return label;
 }
 
@@ -310,40 +301,34 @@ void Label::calculatePosition(float& currentHeight, CCLabelBMFont* label) {
 
 void Label::update(bool forceDisable, bool refresh, float& currentHeight) {
     auto pl = PlayLayer::get();
-    if (!pl) return;
+    if (pl) {
+        CCLabelBMFont* label = get();
+        if (!label) return;
 
-    if (!m_config.m_enabled || forceDisable) {
-        if (m_label && m_labelLayer == pl) {
-            m_label->setVisible(false);
-        }
-        return;
-    }
-
-    CCLabelBMFont* label = get();
-    if (!label) return;
-
-    if (refresh) {
-        switch (m_config.m_font) {
-            case LabelFont::BigFont:
-                m_font = "bigFont.fnt";
-                break;
-            case LabelFont::ChatFont:
-                m_font = "chatFont.fnt";
-                break;
+        if (!m_config.m_enabled) {
+            refresh = false;
+            // don't tick the label if it's not enabled
         }
 
-        label->setFntFile(m_font.c_str());
-        label->setOpacity(static_cast<GLubyte>(m_config.m_opacity * 255.0f));
-        label->setScale(m_config.m_scale);
-        this->calculatePosition(currentHeight, label);
-    }
+        if (refresh) {
+            switch (m_config.m_font) {
+                case LabelFont::BigFont:
+                    m_font = "bigFont.fnt";
+                    break;
+                case LabelFont::ChatFont:
+                    m_font = "chatFont.fnt";
+                    break;
+            }
 
-    label->setVisible(true);
+            label->setFntFile(m_font.c_str());
+            label->setOpacity(
+                static_cast<GLubyte>(m_config.m_opacity * 255.0f));
+            label->setScale(m_config.m_scale);
+            this->calculatePosition(currentHeight, label);
+        }
 
-    std::string str = m_display();
-    if (refresh || str != m_lastString) {
-        label->setString(str.c_str());
-        m_lastString = std::move(str);
+        label->setVisible(m_config.m_enabled && !forceDisable);
+        label->setString(m_display().c_str());
     }
 }
 

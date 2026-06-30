@@ -44,6 +44,7 @@ class SLSettings {
 
     bool speedhackAudio = true;
     bool blockInputs = true;
+    bool useRegularBg = false;
 
     bool automaticVideoName = true;
     bool previewAudio = true;
@@ -129,6 +130,7 @@ class SLSettings {
             Hazard,
             Passable,
             Interactable,
+            InteractableActive
         };
 
         struct HBState {
@@ -147,6 +149,7 @@ class SLSettings {
             {Type::Hazard, {true, 0.0, {1.0, 0.0, 0.0, 1.0}}},
             {Type::Passable, {true, 0.0, {0.0, 1.0, 1.0, 1.0}}},
             {Type::Interactable, {true, 0.0, {1.0, 1.0, 0.0, 1.0}}},
+            {Type::InteractableActive, {true, 0.0, {0.2, 1.0, 0.0, 1.0}}},
         };
     } hitboxes;
 
@@ -201,6 +204,7 @@ struct glz::meta<SLSettings> {
 
         "layout_bg", &T::layoutBgColor,
         "layout_ground", &T::layoutGroundColor,
+        "layout_use_bg", &T::useRegularBg,
 
         "alternate_hook", &T::useAlternateHook
     );

@@ -169,15 +169,19 @@ struct UIState {
         .options = {"Player", "Inner Player", "Rotated Player",
                     "Player (Circle)",
 
-                    "Solid", "Hazard", "Passable", "Interactable"},
+                    "Solid", "Hazard", "Passable", "Interactable",
+                    "Interactable (Active)"},
     };
-    int m_hitboxCategories[8] = {
-        HitboxType::Player,        HitboxType::PlayerInner,
-        HitboxType::PlayerRotated, HitboxType::PlayerCircle,
+    int m_hitboxCategories[9] = {HitboxType::Player,
+                                 HitboxType::PlayerInner,
+                                 HitboxType::PlayerRotated,
+                                 HitboxType::PlayerCircle,
 
-        HitboxType::Solid,         HitboxType::Hazard,
-        HitboxType::Passable,      HitboxType::Interactable,
-    };
+                                 HitboxType::Solid,
+                                 HitboxType::Hazard,
+                                 HitboxType::Passable,
+                                 HitboxType::Interactable,
+                                 HitboxType::InteractableActive};
 
     tabby::ColorState m_hitboxColorState;
     tabby::ColorState m_groundColorState;

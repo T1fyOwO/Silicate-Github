@@ -879,6 +879,9 @@ void UIManager::draw() {
                     Bot::get()->updater().m_layoutMode->notifyChange();
                 }
 
+                tabby::checkbox("Use Regular Background##LayoutMode",
+                                Bot::get()->updater().m_useRegularBg->inner());
+
                 tabby::color("Background Color##LayoutMode",
                              m_state.m_bgColorState, popupShaderFn);
                 tabby::color("Ground Color##LayoutMode",

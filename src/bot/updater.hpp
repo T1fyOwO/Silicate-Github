@@ -67,6 +67,8 @@ class BotUpdater {
 
     SLValuePtr<bool> m_layoutMode =
         SLValue<bool>::create("updater.layout_mode", &_layoutMode);
+    SLValuePtr<bool> m_useRegularBg = SLValue<bool>::create(
+        "updater.layout_use_bg", &SLSettings::get()->useRegularBg);
 
     double m_tpsOverflow = 0.0;
     bool m_shouldRender = true;

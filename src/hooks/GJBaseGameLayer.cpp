@@ -619,7 +619,8 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
             return;
         }
 
-        if (bot->updater().m_layoutMode->inner()) {
+        auto& u = bot->updater();
+        if (u.m_layoutMode->inner() && !u.m_useRegularBg->inner()) {
             background = 13;
         }
 
@@ -629,6 +630,7 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
     void createMiddleground(int mg) {
         auto bot = Bot::get();
         if (!bot->isEnabled() || !bot->updater().m_layoutMode->inner() ||
+            !bot->updater().m_useRegularBg->inner() ||
             LevelEditorLayer::get()) {
             GJBaseGameLayer::createMiddleground(mg);
         } else {
@@ -641,7 +643,8 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
 
     void createGroundLayer(int ground, int lineType) {
         auto bot = Bot::get();
-        if (!bot->isEnabled() || LevelEditorLayer::get()) {
+        if (!bot->isEnabled() || LevelEditorLayer::get() ||
+            !bot->updater().m_useRegularBg->inner()) {
             GJBaseGameLayer::createGroundLayer(ground, lineType);
             return;
         }

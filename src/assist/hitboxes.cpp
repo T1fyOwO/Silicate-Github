@@ -213,6 +213,7 @@ static ResolvedHBCategory resolveHB(SLSettings::HitboxSettings& settings,
 struct ResolvedObjectHB {
     float width;
     ResolvedHBCategory interactable;
+    ResolvedHBCategory interactableActive;
     ResolvedHBCategory solid;
     ResolvedHBCategory passable;
     ResolvedHBCategory hazard;
@@ -259,13 +260,27 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
             bool isObjectRectDirty = object->m_isObjectRectDirty;
             bool boxOffsetCalculated = object->m_boxOffsetCalculated;
 
+            ResolvedHBCategory const* cat = &hb.interactable;
+            if (auto ro = geode::cast::typeinfo_cast<RingObject*>(object); ro) {
+                if (pl->m_player1->m_touchingRings->containsObject(object) ||
+                    pl->m_player2->m_touchingRings->containsObject(object)) {
+                    cat = &hb.interactableActive;
+                }
+            }
+
+            if (object->getObjectRect().intersectsRect(
+                    pl->m_player1->getObjectRect()) ||
+                object->getObjectRect().intersectsRect(
+                    pl->m_player2->getObjectRect())) {
+                cat = &hb.interactableActive;
+            }
+
             if (auto ob = object->m_orientedBox; ob) {
-                node->drawPolygon(ob->m_corners.data(), 4, hb.interactable.fill,
-                                  width, hb.interactable.line);
+                node->drawPolygon(ob->m_corners.data(), 4, cat->fill, width,
+                                  cat->line);
             } else {
                 node->drawRect(usingWidth(object->getObjectRect(), width),
-                               hb.interactable.fill, width,
-                               hb.interactable.line);
+                               cat->fill, width, cat->line);
             }
 
             object->m_isObjectRectDirty = isObjectRectDirty;
@@ -454,6 +469,7 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
             .width =
                 static_cast<float>(hbs.width / pl->m_gameState.m_cameraZoom),
             .interactable = resolveHB(hbs, Type::Interactable),
+            .interactableActive = resolveHB(hbs, Type::InteractableActive),
             .solid = resolveHB(hbs, Type::Solid),
             .passable = resolveHB(hbs, Type::Passable),
             .hazard = resolveHB(hbs, Type::Hazard),
