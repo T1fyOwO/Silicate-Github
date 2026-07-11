@@ -171,6 +171,17 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
         this->updateCamera(dt60);
         this->updateVisibility(dt);
 
+        HardStreak* p1Trail = this->m_player1->m_waveTrail;
+        HardStreak* p2Trail = this->m_player2->m_waveTrail;
+
+        if (this->m_player1->m_isDart) {
+            p1Trail->setPosition(this->m_player1->m_position);
+        }
+
+        if (this->m_player2->m_isDart) {
+            p2Trail->setPosition(this->m_player2->m_position);
+        }
+
         this->CCLayer::update(dt);
     }
 

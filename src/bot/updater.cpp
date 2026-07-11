@@ -175,6 +175,7 @@ static void runSlowLockDeltaUpdates(float realDt,
 
     SCOPED_TIMER("slowLockDelta")
     updater.m_shouldRender = false;
+
     for (int i = 0; i < updater.estimatedStepCount - 1; i++) {
         update(delta);
         if (!((PlayLayer*)pl)->m_hasCompletedLevel &&
@@ -200,6 +201,10 @@ static void runSlowLockDeltaUpdates(float realDt,
     updater.m_shouldRender = true;
     if (updater.estimatedStepCount > 0) {
         update(delta);
+    } else if (updater.m_extrapolateFrames->inner()) {
+        update(realDt *
+               updater.m_speedhack
+                   ->inner());  // guaranteed to be LESS than one physics tick
     }
 }
 
