@@ -29,7 +29,6 @@ add_library(${PROJECT_NAME} SHARED
     src/hooks/FMODAudioEngine.cpp
     src/hooks/GJBaseGameLayer.cpp
     src/hooks/GameObject.cpp
-    src/hooks/HardStreak.cpp
     src/hooks/LevelEditorLayer.cpp
     src/hooks/PauseLayer.cpp
     src/hooks/PlayLayer.cpp
