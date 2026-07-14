@@ -34,6 +34,7 @@ SavedCheckpoint PracticeFix::createCheckpoint(CheckpointObject* obj,
             .m_seedState = Bot::get()->replaySystem().getCurrentRandomState(),
             .m_shakeRandomState = Bot::get()->replaySystem().m_shakeRandomState,
             .m_tps = Bot::get()->updater().m_tps->inner(),
+            .m_timewarpTime = Bot::get()->updater().m_timewarpTime,
             .m_persistentItemMap =
                 pl->m_effectManager->m_persistentItemCountMap,
             .m_varianceValues = pl->m_varianceValues,
@@ -81,6 +82,7 @@ void PracticeFix::applyCheckpoint(SavedCheckpoint& cp) {
         auto bot = Bot::get();
         auto& updater = bot->updater();
         updater.m_frameOnLastAttempt = cp.m_attemptStartFrame;
+        updater.m_timewarpTime = cp.m_timewarpTime;
         updater.setFrame(cp.m_frame - cp.m_attemptStartFrame);
         bot->replaySystem().getCurrentRandomState() = cp.m_seedState;
         bot->replaySystem().m_shakeRandomState = cp.m_shakeRandomState;

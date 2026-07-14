@@ -78,9 +78,9 @@ class SLKeybind : public KeybindControl {
      * - Set the value on key press, but don't change it back
      */
 
-    static constexpr bool MODIFIER_SHIFT = 0b001;
-    static constexpr bool MODIFIER_CTRL = 0b010;
-    static constexpr bool MODIFIER_ALT = 0b100;
+    static constexpr int MODIFIER_SHIFT = 0b100;
+    static constexpr int MODIFIER_CTRL = 0b010;
+    static constexpr int MODIFIER_ALT = 0b001;
 
    private:
     // What value to set when the keybind is pressed

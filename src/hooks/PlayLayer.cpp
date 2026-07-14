@@ -2,6 +2,7 @@
 #include <filesystem>
 
 #include "assist/autoclicker.hpp"
+#include "assist/cps.hpp"
 #include "assist/hitboxes.hpp"
 #include "bot/bot.hpp"
 #include "bot/updater.hpp"
@@ -30,6 +31,11 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
         SCOPED_TIMER("createCheckpoint")
         auto cp = createCheckpoint();
         storeCheckpoint(cp);
+
+        if (cp && cp->m_physicalCheckpointObject) {
+            cp->m_physicalCheckpointObject->activateObject();
+        }
+
         return cp;
     }
 
@@ -416,6 +422,8 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
 
         // Clear hitbox trail (maybe prune it up until this frame later?)
         bot->hitboxes().clearTrail();
+
+        bot->cps().clearActions();
 
         this->updateRandomSeedOnReset();
 

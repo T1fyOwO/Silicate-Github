@@ -29,6 +29,7 @@ class UIManager {
     UIManager();
 
     void setup();
+    void reinitThemeGraphics();
     void draw();
     void toggle();
 };

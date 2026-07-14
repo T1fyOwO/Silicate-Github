@@ -29,6 +29,7 @@ class TrajectoryManager;
 class Autoclicker;
 class Hitboxes;
 class LabelManager;
+class CPSCounter;
 
 class Bot {
    public:
@@ -65,6 +66,7 @@ class Bot {
     Autoclicker& autoclicker();
     Hitboxes& hitboxes();
     LabelManager& labels();
+    CPSCounter& cps();
 
     Mode m_mode = Recording;
     SLValuePtr<bool> m_enabled = SLValue<bool>::create(

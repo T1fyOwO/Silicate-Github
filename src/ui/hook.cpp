@@ -22,13 +22,12 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     bool ctrlHeld = GetKeyState(VK_CONTROL) & 0x8000;
     bool altHeld = GetKeyState(VK_MENU) & 0x8000;
 
-    // on resize window
-    if (uMsg == WM_SIZE) {
+    if (uMsg == WM_SIZE && wParam != SIZE_MINIMIZED) {
         ImGuiHookCtx::get().handleResize(LOWORD(lParam), HIWORD(lParam));
     }
 
-    if (uMsg == WM_SIZING) {
-        ImGuiHookCtx::get().handleResize(LOWORD(lParam), HIWORD(lParam));
+    if (uMsg == WM_KILLFOCUS) {
+        Bot::get()->ui().m_state.m_visible->inner() = false;
     }
 
     if ((uMsg == WM_KEYDOWN || uMsg == WM_KEYUP || uMsg == WM_CHAR) &&
@@ -43,7 +42,11 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
         if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN || uMsg == WM_KEYUP ||
             uMsg == WM_SYSKEYUP || uMsg == WM_CHAR) {
-            if (ImGui::GetIO().WantCaptureKeyboard) {
+            bool systemKey = uMsg == WM_SYSKEYDOWN || uMsg == WM_SYSKEYUP ||
+                             wParam == VK_LWIN || wParam == VK_RWIN ||
+                             wParam == VK_MENU || wParam == VK_LMENU ||
+                             wParam == VK_RMENU;
+            if (ImGui::GetIO().WantCaptureKeyboard && !systemKey) {
                 return true;
             }
         }
@@ -228,15 +231,25 @@ void main() {
 )";
 
 void ImGuiHookCtx::init(cocos2d::CCEGLView* view) {
+    auto* glfwWindow = view->getWindow();
+    if (glfwWindow == nullptr) return;
+    HDC hdc =
+        *reinterpret_cast<HDC*>(reinterpret_cast<uintptr_t>(glfwWindow) + 632);
+    if (hdc == nullptr) return;
+    HWND hWnd = WindowFromDC(hdc);
+    if (hWnd == nullptr) return;
+
     if (m_inited) {
+        if (glfwWindow == m_glfwWindow && hWnd == m_hWnd) {
+            return;
+        }
+
+        geode::log::info("gl window recreated; reinitializing overlay");
+        reinitForNewWindow(view, hdc, hWnd);
         return;
     }
 
     m_time = 0.0f;
-
-    auto* glfwWindow = view->getWindow();
-    HDC hdc =
-        *reinterpret_cast<HDC*>(reinterpret_cast<uintptr_t>(glfwWindow) + 632);
 
     auto mouse = MouseInputEvent().listen([](MouseInputData&) {
         if (ImGui::GetIO().WantCaptureMouse) {
@@ -258,7 +271,7 @@ void ImGuiHookCtx::init(cocos2d::CCEGLView* view) {
     });
     kb.leak();
 
-    m_hWnd = WindowFromDC(hdc);
+    m_hWnd = hWnd;
 
     DragAcceptFiles(m_hWnd, TRUE);
 
@@ -312,11 +325,64 @@ void ImGuiHookCtx::init(cocos2d::CCEGLView* view) {
     glBindFramebuffer(GL_FRAMEBUFFER, oldFbo);
 
     geode::log::info("Initialized ImGUI");
+    m_glfwWindow = glfwWindow;
     m_inited = true;
+}
+
+void ImGuiHookCtx::reinitForNewWindow(cocos2d::CCEGLView* view, HDC hdc,
+                                      HWND hWnd) {
+    m_time = 0.0f;
+    m_glfwWindow = view->getWindow();
+    m_hWnd = hWnd;
+
+    DragAcceptFiles(m_hWnd, TRUE);
+    m_oWndProc =
+        (WNDPROC)SetWindowLongPtr(m_hWnd, GWLP_WNDPROC, (LONG_PTR)h_WndProc);
+
+    m_ctx.reinit(tabby::Context::CtxInitParams{.hdc = (void*)hdc});
+
+    float width = view->getFrameSize().width / BLUR_DOWNSCALING_FACTOR;
+    float height = view->getFrameSize().height / BLUR_DOWNSCALING_FACTOR;
+
+    m_width = width * BLUR_DOWNSCALING_FACTOR;
+    m_height = height * BLUR_DOWNSCALING_FACTOR;
+
+    m_blurPass.m_width = (unsigned int)width;
+    m_blurPass.m_height = (unsigned int)height;
+
+    GLint oldFbo;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFbo);
+
+    m_blurPass.initialize();
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glGenTextures(1, &m_inputTex);
+    glBindTexture(GL_TEXTURE_2D, m_inputTex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_blurPass.m_width,
+                 m_blurPass.m_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, m_blurPass.m_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D,
+                           m_inputTex, 0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, oldFbo);
+
+    // reinit textures since those get fucked
+    Bot::get()->ui().reinitThemeGraphics();
+
+    geode::log::info("Reinitialized overlay for recreated window");
 }
 
 void ImGuiHookCtx::handleResize(float width, float height) {
     if (!m_inited) return;
+
+    if (width <= 0.0f || height <= 0.0f) return;
 
     width /= BLUR_DOWNSCALING_FACTOR;
     height /= BLUR_DOWNSCALING_FACTOR;
@@ -442,12 +508,16 @@ void ImGuiHookCtx::postSampleBlur() {
 void ImGuiHookCtx::draw() {
     init(CCEGLView::get());
 
+    if (!m_inited) return;
+
     m_ctx.draw([&]() { Bot::get()->ui().draw(); });
 }
 
 struct SLEGLView : Modify<SLEGLView, CCEGLView> {
     void swapBuffers() {
-        ImGuiHookCtx::get().draw();
+        auto& ctx = ImGuiHookCtx::get();
+
+        ctx.draw();
 
         CCEGLView::swapBuffers();
 

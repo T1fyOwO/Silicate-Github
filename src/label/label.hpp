@@ -9,14 +9,16 @@
 
 using namespace cocos2d;
 
+class Label;
+
 class RawLabel {
    public:
     std::string m_id;
-    std::function<std::string()> m_display;
+    std::function<std::string(Label&)> m_display;
     std::string m_font;
     int m_anchor = 0;
 
-    RawLabel(std::string id, std::function<std::string()> display,
+    RawLabel(std::string id, std::function<std::string(Label&)> display,
              std::string font, int anchor = 0) {
         m_id = id;
         m_display = display;
@@ -53,7 +55,7 @@ class Label {
    private:
     std::string m_id;
     std::string m_friendly;
-    std::function<std::string()> m_display;
+    std::function<std::string(Label&)> m_display;
 
     std::string m_font = "chatFont.fnt";
     CCPoint m_position = CCPoint(0.0f, 0.0f);
@@ -62,7 +64,7 @@ class Label {
    public:
     Label() = default;
     Label(std::string id, std::string friendly,
-          std::function<std::string()> display, LabelConfig cfg) {
+          std::function<std::string(Label&)> display, LabelConfig cfg) {
         m_id = id;
         m_friendly = friendly;
         m_display = display;
@@ -94,7 +96,7 @@ class LabelManager {
     bool m_globalEnabled = true;
 
     template <typename F>
-        requires std::is_invocable_r_v<std::string, F>
+        requires std::is_invocable_r_v<std::string, F, Label&>
     void addLabel(std::string id, std::string friendly, F display,
                   Label::LabelConfig cfg) {
         m_labels.push_back(Label(id, friendly, display, cfg));

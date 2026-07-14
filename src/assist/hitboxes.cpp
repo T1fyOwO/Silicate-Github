@@ -2,6 +2,7 @@
 
 #include <Geode/Geode.hpp>
 
+#include "Geode/cocos/draw_nodes/CCDrawNode.h"
 #include "bot/bot.hpp"
 #include "ccTypes.h"
 #include "settings/settings.hpp"
@@ -20,18 +21,6 @@
     }
 #define HB_ENABLED(_t) settings.categories[_t].enabled
 
-static cocos2d::CCRect usingWidth(const cocos2d::CCRect& old,
-                                  const float width) {
-    if (width == 0.0) return old;
-
-    cocos2d::CCRect rect = old;
-    rect.origin.x += width;
-    rect.origin.y += width;
-    rect.size.width -= width * 2.0;
-    rect.size.height -= width * 2.0;
-    return rect;
-}
-
 static void drawPlayerHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
                              PlayerObject* player,
                              SLSettings::HitboxSettings& settings) {
@@ -40,14 +29,14 @@ static void drawPlayerHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
 
     const float width = settings.width / pl->m_gameState.m_cameraZoom;
 
-    auto rect = usingWidth(player->getObjectRect(), width);
-    auto scaled = usingWidth(player->getObjectRect(0.3, 0.3), width);
+    auto rect = player->getObjectRect();
+    auto scaled = player->getObjectRect(0.3, 0.3);
 
     if (auto ob = player->getOrientedBox();
         ob && HB_ENABLED(Type::PlayerRotated)) {
-        node->drawPolygon(ob->m_corners.data(), 4,
-                          CC_FILL_COLOR(Type::PlayerRotated), width,
-                          CC_COLOR(Type::PlayerRotated));
+        node->drawPolygon(
+            ob->m_corners.data(), 4, CC_FILL_COLOR(Type::PlayerRotated), width,
+            CC_COLOR(Type::PlayerRotated), cocos2d::BorderAlignment::Inside);
     }
 
     float radius = player->getObjectRect().size.width / 2.0;
@@ -60,11 +49,13 @@ static void drawPlayerHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
 
     if (HB_ENABLED(Type::Player)) {
         node->drawRect(rect, CC_FILL_COLOR(Type::Player), width,
-                       CC_COLOR(Type::Player));
+                       CC_COLOR(Type::Player),
+                       cocos2d::BorderAlignment::Inside);
     }
     if (HB_ENABLED(Type::PlayerInner)) {
         node->drawRect(scaled, CC_FILL_COLOR(Type::PlayerInner), width,
-                       CC_COLOR(Type::PlayerInner));
+                       CC_COLOR(Type::PlayerInner),
+                       cocos2d::BorderAlignment::Inside);
     }
 }
 
@@ -79,11 +70,12 @@ inline bool HitboxTrailUnit::shouldDraw(float minX, float maxX, float minY,
 
 void HitboxTrailUnit::draw(cocos2d::CCDrawNode* node, float width,
                            float* colors, float fillOpacity) {
-    cocos2d::CCRect rect = usingWidth(m_rect, width);
+    cocos2d::CCRect rect = m_rect;
 
     node->drawRect(rect,
                    {colors[0], colors[1], colors[2], colors[3] * fillOpacity},
-                   width, *reinterpret_cast<cocos2d::ccColor4F*>(colors));
+                   width, *reinterpret_cast<cocos2d::ccColor4F*>(colors),
+                   cocos2d::BorderAlignment::Inside);
 }
 
 void HitboxTrailUnit::drawRotated(cocos2d::CCDrawNode* node, float width,
@@ -91,20 +83,22 @@ void HitboxTrailUnit::drawRotated(cocos2d::CCDrawNode* node, float width,
     node->drawPolygon(
         m_rotated.data(), 4,
         {colors[0], colors[1], colors[2], colors[3] * fillOpacity}, width,
-        *reinterpret_cast<cocos2d::ccColor4F*>(colors));
+        *reinterpret_cast<cocos2d::ccColor4F*>(colors),
+        cocos2d::BorderAlignment::Inside);
 }
 
 void HitboxTrailUnit::drawInner(cocos2d::CCDrawNode* node, float width,
                                 float* colors, float fillOpacity) {
-    cocos2d::CCRect scaled = usingWidth(m_scaled, width);
+    cocos2d::CCRect scaled = m_scaled;
     node->drawRect(scaled,
                    {colors[0], colors[1], colors[2], colors[3] * fillOpacity},
-                   width, *reinterpret_cast<cocos2d::ccColor4F*>(colors));
+                   width, *reinterpret_cast<cocos2d::ccColor4F*>(colors),
+                   cocos2d::BorderAlignment::Inside);
 }
 
 void HitboxTrailUnit::drawCircle(cocos2d::CCDrawNode* node, float width,
                                  float* colors, float fillOpacity) {
-    cocos2d::CCRect rect = usingWidth(m_rect, width);
+    cocos2d::CCRect rect = m_rect;
     float radius = rect.size.width / 2.0;
     if (radius > 0) {
         int segments = (int)std::max(radius, 8.0f) * 3.0;
@@ -275,12 +269,12 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
                 cat = &hb.interactableActive;
             }
 
-            if (auto ob = object->m_orientedBox; ob) {
+            if (auto ob = object->getOrientedBox(); ob) {
                 node->drawPolygon(ob->m_corners.data(), 4, cat->fill, width,
-                                  cat->line);
+                                  cat->line, cocos2d::BorderAlignment::Inside);
             } else {
-                node->drawRect(usingWidth(object->getObjectRect(), width),
-                               cat->fill, width, cat->line);
+                node->drawRect(object->getObjectRect(), cat->fill, width,
+                               cat->line, cocos2d::BorderAlignment::Inside);
             }
 
             object->m_isObjectRectDirty = isObjectRectDirty;
@@ -292,8 +286,8 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
             const ResolvedHBCategory& cat =
                 object->m_isPassable ? hb.passable : hb.solid;
             if (cat.enabled) {
-                node->drawRect(usingWidth(object->getObjectRect(), width),
-                               cat.fill, width, cat.line);
+                node->drawRect(object->getObjectRect(), cat.fill, width,
+                               cat.line, cocos2d::BorderAlignment::Inside);
             }
 
             break;
@@ -326,7 +320,8 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
             const ResolvedHBCategory& cat =
                 object->m_isPassable ? hb.passable : hb.solid;
             if (cat.enabled) {
-                node->drawPolygon(verts.data(), 3, cat.fill, width, cat.line);
+                node->drawPolygon(verts.data(), 3, cat.fill, width, cat.line,
+                                  cocos2d::BorderAlignment::Inside);
             }
 
             break;
@@ -349,12 +344,14 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
 
                 node->drawCircle(object->getPosition(), radius, hb.hazard.fill,
                                  width, hb.hazard.line, segments);
-            } else if (auto ob = object->m_orientedBox; ob) {
+            } else if (auto ob = object->getOrientedBox(); ob) {
                 node->drawPolygon(ob->m_corners.data(), 4, hb.hazard.fill,
-                                  width, hb.hazard.line);
+                                  width, hb.hazard.line,
+                                  cocos2d::BorderAlignment::Inside);
             } else {
-                node->drawRect(usingWidth(object->getObjectRect(), width),
-                               hb.hazard.fill, width, hb.hazard.line);
+                node->drawRect(object->getObjectRect(), hb.hazard.fill, width,
+                               hb.hazard.line,
+                               cocos2d::BorderAlignment::Inside);
             }
 
             object->m_isObjectRectDirty = isObjectRectDirty;

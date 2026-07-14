@@ -2,6 +2,7 @@
 
 #include <winuser.h>
 
+#include <Geode/Enums.hpp>
 #include <Geode/Geode.hpp>
 #include <algorithm>
 #include <slc/formats/v3/atom.hpp>
@@ -426,6 +427,15 @@ void UIManager::setup() {
     Renderer::get()->loadFFmpeg();
 }
 
+void UIManager::reinitThemeGraphics() {
+    for (auto& theme : s_themes) {
+        theme.initialize();
+    }
+    if (m_theme) {
+        m_theme->apply();
+    }
+}
+
 static void preDrawBlurEffect(const ImDrawList*, const ImDrawCmd* cmd) {
     auto pos = ImGui::GetDrawData()->DisplayPos;
     auto sz = ImGui::GetDrawData()->DisplaySize;
@@ -577,7 +587,8 @@ void UIManager::draw() {
 
     ImGuiHookCtx::get().m_time += cocos2d::CCDirector::get()->getDeltaTime();
     const auto popupShaderFn = [&]() {
-        renderBlurBg(12.0f, 1.5f, m_state.m_useShader->inner());
+        renderBlurBg(12.0f, 1.5f, m_state.m_useShader->inner(),
+                     m_state.m_opacity->inner());
     };
 
     cfg.uiScale = m_state.m_uiScale->inner() * getWindowDpi();
@@ -841,10 +852,8 @@ void UIManager::draw() {
                             0.02f, "{:.2f}");
 
                 tabby::dropdown("Hitbox##Selector", m_state.m_hitboxState,
-                                m_state.m_hitboxState.selectedIndex, [&]() {
-                                    renderBlurBg(12.0f, 1.5f,
-                                                 m_state.m_useShader->inner());
-                                });
+                                m_state.m_hitboxState.selectedIndex,
+                                popupShaderFn);
 
                 {
                     auto& h = m_state.m_hitboxCategories[m_state.m_hitboxState
@@ -858,10 +867,7 @@ void UIManager::draw() {
                     m_state.m_hitboxColorState.colors = category.colors;
 
                     tabby::color("Color##SpecificHitbox",
-                                 m_state.m_hitboxColorState, [&]() {
-                                     renderBlurBg(12.0f, 1.5f,
-                                                  m_state.m_useShader->inner());
-                                 });
+                                 m_state.m_hitboxColorState, popupShaderFn);
 
                     category.colors = m_state.m_hitboxColorState.colors;
 
@@ -921,10 +927,7 @@ void UIManager::draw() {
 
                 tabby::dropdown(
                     "Trajectory##Selector", m_state.m_trajectoryState,
-                    m_state.m_trajectoryState.selectedIndex, [&]() {
-                        renderBlurBg(12.0f, 1.5f, m_state.m_useShader->inner());
-                    });
-
+                    m_state.m_trajectoryState.selectedIndex, popupShaderFn);
                 {
                     auto& t = m_state.m_categories[m_state.m_trajectoryState
                                                        .selectedIndex];
@@ -938,10 +941,7 @@ void UIManager::draw() {
                     m_state.m_trajectoryColorState.colors = category.colors;
 
                     tabby::color("Color##SpecificTrajectory",
-                                 m_state.m_trajectoryColorState, [&]() {
-                                     renderBlurBg(12.0f, 1.5f,
-                                                  m_state.m_useShader->inner());
-                                 });
+                                 m_state.m_trajectoryColorState, popupShaderFn);
 
                     category.colors = m_state.m_trajectoryColorState.colors;
                 };
@@ -987,13 +987,11 @@ void UIManager::draw() {
                             "{} Frame(s)");
                 tabby::checkbox("Swift Clicks",
                                 Bot::get()->autoclicker().m_performSwifts);
-                tabby::dropdown(
-                    "Player##Autoclicker", m_state.m_autoclickerState,
-                    *reinterpret_cast<int*>(
-                        &Bot::get()->autoclicker().m_player),
-                    [&]() {
-                        renderBlurBg(12.0f, 1.5f, m_state.m_useShader->inner());
-                    });
+                tabby::dropdown("Player##Autoclicker",
+                                m_state.m_autoclickerState,
+                                *reinterpret_cast<int*>(
+                                    &Bot::get()->autoclicker().m_player),
+                                popupShaderFn);
 
                 tabby::divider();
 
@@ -1299,9 +1297,7 @@ void UIManager::draw() {
 
                 tabby::input_text_autocomplete(
                     "Preset Name", "Preset", m_state.m_presetName,
-                    m_state.m_presetAutocomplete, [&]() {
-                        renderBlurBg(12.0f, 1.5f, m_state.m_useShader->inner());
-                    });
+                    m_state.m_presetAutocomplete, popupShaderFn);
 
                 tabby::fraction(2.0, [&]() {
                     if (tabby::button("Load##Preset").pressed) {
@@ -1365,8 +1361,13 @@ void UIManager::draw() {
                             0.0, 1.0, 0.01, "{:.2f}");
                 tabby::drag("SFX Volume", renderer->m_settings.m_sfxVolume, 0.0,
                             1.0, 0.01, "{:.2f}");
+
                 tabby::checkbox("Record 1st Attempt Pause",
                                 renderer->m_settings.m_firstAttemptPause);
+
+                tabby::checkbox(
+                    "Show Labels While Rendering",
+                    bot->updater().m_showLabelsWhileRendering->inner());
 
                 tabby::input_text("FFmpeg Args", "-preset slow ...",
                                   renderer->m_settings.m_renderArgs);
@@ -1428,11 +1429,7 @@ void UIManager::draw() {
 
                 if (tabby::dropdown("Theme", m_state.m_themeState,
                                     m_state.m_themeState.selectedIndex,
-                                    [&]() {
-                                        renderBlurBg(
-                                            12.0f, 1.5f,
-                                            m_state.m_useShader->inner());
-                                    })
+                                    popupShaderFn)
                         .changed) {
                     SLSettings::get()->theme =
                         m_state.m_themeState.selectedIndex;
@@ -1459,15 +1456,15 @@ void UIManager::draw() {
                     m_state.m_uiScale->notifyChange();
                 }
 
-                if (m_state.m_restartGameInfo) {
-                    ImGui::PushStyleColor(ImGuiCol_Text,
-                                          ImVec4(1.0f, 0.5f, 0.5f, 1.0f));
-                    tabby::text(
-                        "It's recommended to restart the game after "
-                        "changing "
-                        "UI scale.");
-                    ImGui::PopStyleColor();
-                }
+                // if (m_state.m_restartGameInfo) {
+                //     ImGui::PushStyleColor(ImGuiCol_Text,
+                //                           ImVec4(1.0f, 0.5f, 0.5f, 1.0f));
+                //     tabby::text(
+                //         "It's recommended to restart the game after "
+                //         "changing "
+                //         "UI scale.");
+                //     ImGui::PopStyleColor();
+                // }
 
                 if (tabby::drag("UI Opacity", m_state.m_opacity->inner(), 0.1f,
                                 1.0f, 0.01f, "{:.2f}")
@@ -1509,10 +1506,8 @@ void UIManager::draw() {
                                 Bot::get()->labels().m_globalEnabled);
 
                 tabby::dropdown("Label##Selector", m_state.m_labelState,
-                                m_state.m_labelState.selectedIndex, [&]() {
-                                    renderBlurBg(12.0f, 1.5f,
-                                                 m_state.m_useShader->inner());
-                                });
+                                m_state.m_labelState.selectedIndex,
+                                popupShaderFn);
 
                 auto& label = Bot::get()
                                   ->labels()
@@ -1538,22 +1533,14 @@ void UIManager::draw() {
 
                 if (tabby::dropdown("Font##Label", m_state.m_labelFontsState,
                                     *reinterpret_cast<int*>(&label.m_font),
-                                    [&]() {
-                                        renderBlurBg(
-                                            12.0f, 1.5f,
-                                            m_state.m_useShader->inner());
-                                    })
+                                    popupShaderFn)
                         .changed) {
                     bot->labels().m_requiresRefresh = true;
                 }
 
                 if (tabby::dropdown(
                         "Position##Label", m_state.m_labelPositionsState,
-                        *reinterpret_cast<int*>(&label.m_anchor),
-                        [&]() {
-                            renderBlurBg(12.0f, 1.5f,
-                                         m_state.m_useShader->inner());
-                        })
+                        *reinterpret_cast<int*>(&label.m_anchor), popupShaderFn)
                         .changed) {
                     bot->labels().m_requiresRefresh = true;
                 }
@@ -1575,10 +1562,8 @@ void UIManager::draw() {
                                 bot->updater().m_lockDelta->inner());
 
                 tabby::dropdown("Lock Delta Mode", m_state.m_lockDeltaState,
-                                bot->updater().m_lockDeltaMode->inner(), [&]() {
-                                    renderBlurBg(12.0f, 1.5f,
-                                                 m_state.m_useShader->inner());
-                                });
+                                bot->updater().m_lockDeltaMode->inner(),
+                                popupShaderFn);
 
                 tabby::checkbox("Real Time",
                                 bot->updater().m_realTime->inner());
@@ -1627,32 +1612,6 @@ void UIManager::draw() {
             24.0f * tabby::TabbyGlobalCfg::get().uiScale,
             ImDrawFlags_RoundCornersAll,
             2.5 * tabby::TabbyGlobalCfg::get().uiScale);
-
-        tabby::off_the_screen();  // incredible solution
-        tabby::text(
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-            "!@#$"
-            "%^&*()_+[]{}|;':\",./<>?`~=-");
-        tabby::text(
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-            "!@#$"
-            "%^&*()_+[]{}|;':\",./<>?`~=-",
-            m_bold);
-        tabby::text(
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-            "!@#$"
-            "%^&*()_+[]{}|;':\",./<>?`~=-",
-            m_medium);
-
-        tabby::text(
-            "\uf192    \uefba    \uf03d    \uf121    \uf013    \uf078    "
-            "\uf054    \uf00c    \uf044    \uf51b    \uf004    \uf05f    "
-            "\uf01f");
-        tabby::text(
-            "\uf192    \uefba    \uf03d    \uf121    \uf013    \uf078    "
-            "\uf054    \uf00c    \uf044    \uf51b    \uf004    \uf05f    "
-            "\uf01f",
-            m_medium);
     });
 
 #ifdef SILICATE_PROTECT

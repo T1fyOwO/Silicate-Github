@@ -11,6 +11,7 @@
 
 #include "Geode/cocos/CCScheduler.h"
 #include "assist/autoclicker.hpp"
+#include "assist/cps.hpp"
 #include "assist/hitboxes.hpp"
 #include "bot.hpp"
 #include "checkpoint/fix.hpp"
@@ -287,7 +288,8 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
         update(realDt * m_speedhack->inner());
     }
 
-    bool disableLabels = Renderer::get()->isRecording();
+    bool disableLabels =
+        Renderer::get()->isRecording() && !m_showLabelsWhileRendering->inner();
 
     bot->labels().update(disableLabels);
     bot->trajectory().update(PlayLayer::get());
@@ -534,8 +536,11 @@ static void frameUpdateMidhook(SafetyHookContext&) {
     if (!pl->m_playerDied) {
         if (pll) {
             updater.incrementFrame();
+            updater.m_timewarpTime +=
+                updater.getPhysicsDt() * pll->m_gameState.m_timeWarp;
         }
 
+        bot->cps().update();
         bot->hitboxes().saveToTrail(pl);
 
         auto trajectory = bot->trajectory().unsafeInner();

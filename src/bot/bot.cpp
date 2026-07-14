@@ -5,6 +5,7 @@
 #include <filesystem>
 
 #include "assist/autoclicker.hpp"
+#include "assist/cps.hpp"
 #include "assist/hitboxes.hpp"
 #include "checkpoint/fix.hpp"
 #include "label/label.hpp"
@@ -37,6 +38,7 @@ class Bot::Impl {
     Hitboxes m_hitboxes;
 
     LabelManager m_labels;
+    CPSCounter m_cps;
 
     friend class Bot;
 };
@@ -53,6 +55,7 @@ BOT_GETTER(TrajectoryManager, trajectory)
 BOT_GETTER(Autoclicker, autoclicker)
 BOT_GETTER(Hitboxes, hitboxes)
 BOT_GETTER(LabelManager, labels)
+BOT_GETTER(CPSCounter, cps)
 
 Bot::Bot() : m_impl(std::make_unique<Impl>()) {}
 Bot::~Bot() = default;

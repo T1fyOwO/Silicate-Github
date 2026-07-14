@@ -53,6 +53,7 @@ class SLSettings {
     bool scrollSpeedBugFix = false;
 
     bool autoclickerEnabled = false;
+    bool showLabelsWhileRendering = false;
 
     bool useAlternateHook = false;
 
@@ -205,6 +206,8 @@ struct glz::meta<SLSettings> {
         "layout_bg", &T::layoutBgColor,
         "layout_ground", &T::layoutGroundColor,
         "layout_use_bg", &T::useRegularBg,
+
+        "show_labels_while_rendering", &T::showLabelsWhileRendering,
 
         "alternate_hook", &T::useAlternateHook
     );

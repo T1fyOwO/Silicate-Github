@@ -21,6 +21,7 @@ add_library(${PROJECT_NAME} SHARED
 
     src/assist/autoclicker.cpp
     src/assist/hitboxes.cpp
+    src/assist/cps.cpp
 
     src/hooks/CCActionManager.cpp
     src/hooks/CCDirector.cpp

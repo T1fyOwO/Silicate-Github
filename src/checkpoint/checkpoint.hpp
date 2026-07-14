@@ -274,6 +274,7 @@ struct SavedCheckpoint {
     uint64_t m_shakeRandomState;
 
     double m_tps;
+    double m_timewarpTime;
 
     // Additional GJEffectManager state
     std::unordered_map<int, int> m_persistentItemMap;

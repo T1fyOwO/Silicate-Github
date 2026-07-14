@@ -1,9 +1,12 @@
 #include "label.hpp"
 
+#include <Geode/binding/GJBaseGameLayer.hpp>
 #include <glaze/glaze.hpp>
 
+#include "assist/cps.hpp"
 #include "bot/bot.hpp"
 #include "bot/updater.hpp"
+#include "ccTypes.h"
 #include "replay/system.hpp"
 
 using namespace geode::prelude;
@@ -25,40 +28,43 @@ using namespace geode::prelude;
 
 LabelManager::LabelManager() {
     addLabel("frame", "Tick",
-             []() {
+             [](Label&) {
                  auto& updater = Bot::get()->updater();
                  return fmt::format("Tick: {}", updater.getFrame());
              },
              {});
 
-    addLabel("internal_frame", "Internal Physics Tick",
-             []() {
+    addLabel("internal_frame", "Internal Game Tick",
+             [](Label&) {
                  return fmt::format(
-                     "Internal Tick: {}",
+                     "Game tick: {}",
                      PlayLayer::get()->m_gameState.m_currentProgress);
              },
              {});
 
-    addLabel(
-        "tps", "TPS",
-        []() { return fmt::format("TPS: {}", Bot::get()->updater().getTps()); },
-        {});
+    addLabel("tps", "TPS",
+             [](Label&) {
+                 return fmt::format("TPS: {}", Bot::get()->updater().getTps());
+             },
+             {});
 
     addLabel("player_x", "Player X",
-             []() { GET_PLAYER_VAR("X", position.x, 6) }, {});
+             [](Label&) { GET_PLAYER_VAR("X", position.x, 6) }, {});
     addLabel("player_y", "Player Y",
-             []() { GET_PLAYER_VAR("Y", position.y, 6) }, {});
-    addLabel("player_xvel", "Player X Velocity",
-             []() { GET_PLAYER_VAR("X Velocity", platformerXVelocity, 6) }, {});
+             [](Label&) { GET_PLAYER_VAR("Y", position.y, 6) }, {});
+    addLabel(
+        "player_xvel", "Player X Velocity",
+        [](Label&) { GET_PLAYER_VAR("X Velocity", platformerXVelocity, 6) },
+        {});
     addLabel("player_yvel", "Player Y Velocity",
-             []() { GET_PLAYER_VAR("Y Velocity", yVelocity, 3) }, {});
+             [](Label&) { GET_PLAYER_VAR("Y Velocity", yVelocity, 3) }, {});
     addLabel("player_rot", "Player Rotation",
-             []() { GET_PLAYER_VAR("Rotation", fRotationX, 3) }, {});
+             [](Label&) { GET_PLAYER_VAR("Rotation", fRotationX, 3) }, {});
     addLabel("player_speed", "Player Speed",
-             []() { GET_PLAYER_VAR("Speed", playerSpeed, 2) }, {});
+             [](Label&) { GET_PLAYER_VAR("Speed", playerSpeed, 2) }, {});
 
     addLabel("player_grav", "Player Gravity",
-             []() {
+             [](Label&) {
                  auto pl = PlayLayer::get();
                  auto player = pl->m_player1;
                  auto player2 = pl->m_player2;
@@ -76,7 +82,7 @@ LabelManager::LabelManager() {
              {});
 
     addLabel("player_alive", "Player Dead/Alive",
-             []() {
+             [](Label&) {
                  auto pl = PlayLayer::get();
                  auto player = pl->m_player1;
                  auto player2 = pl->m_player2;
@@ -92,28 +98,28 @@ LabelManager::LabelManager() {
              {});
 
     addLabel("bot_state", "Bot State",
-             []() {
+             [](Label&) {
                  return fmt::format("Bot State: {}", Bot::get()->isPlaying()
                                                          ? "Playing"
                                                          : "Recording");
              },
              {});
     addLabel("random_state", "Random Seed State",
-             []() {
+             [](Label&) {
                  return fmt::format(
                      "Random State: {}",
                      Bot::get()->replaySystem().getCurrentRandomState());
              },
              {});
     addLabel("shake_state", "Random Shake State",
-             []() {
+             [](Label&) {
                  return fmt::format(
                      "Shake Random State: {}",
                      Bot::get()->replaySystem().getCurrentShakeState());
              },
              {});
     addLabel("action_index", "Action Index",
-             []() {
+             [](Label&) {
                  return fmt::format(
                      "Action Index: {}/{}",
                      Bot::get()->replaySystem().getInputIndex(),
@@ -121,7 +127,7 @@ LabelManager::LabelManager() {
              },
              {});
     addLabel("intentional_death", "Intentional Death",
-             []() {
+             [](Label&) {
                  if (Bot::get()->isRecording()) {
                      return fmt::format("Intentional Death: {}",
                                         Bot::get()->updater().m_canDie->inner()
@@ -131,12 +137,12 @@ LabelManager::LabelManager() {
 
                  return fmt::format("Intentional Death: {}",
                                     Bot::get()->updater().m_expectsDeath
-                                        ? "Expects Death"
+                                        ? "Expects death"
                                         : "Nothing");
              },
              {});
     addLabel("ssb_dt", "Scroll Speed Bug DT",
-             []() {
+             [](Label&) {
                  float tfx = PlayLayer::get()->timeForPos(
                      PlayLayer::get()->m_player1->m_position, 0,
                      PlayLayer::get()->m_gameState.m_currentChannel, true, 0);
@@ -150,7 +156,7 @@ LabelManager::LabelManager() {
              {});
 
     addLabel("max_upr", "Dynamic UPR",
-             []() {
+             [](Label&) {
                  if (Bot::get()->updater().m_realTime->inner()) {
                      return std::string("Dynamic UPR: Uncapped");
                  }
@@ -161,6 +167,79 @@ LabelManager::LabelManager() {
                  } else {
                      return fmt::format("Static UPR: {}",
                                         Bot::get()->updater().m_stepLimit);
+                 }
+             },
+             {});
+
+    addLabel("cps", "CPS",
+             [](Label& l) {
+                 int cps1 = Bot::get()->cps().queryCPS(1);
+                 int cps2 = Bot::get()->cps().queryCPS(2);
+
+                 auto pl = GJBaseGameLayer::get();
+                 if (cps1 > 16 || cps2 > 16) {
+                     l.get()->setColor(ccc3(255, 128, 128));
+                 } else {
+                     l.get()->setColor(ccc3(255, 255, 255));
+                 }
+
+                 if (pl->m_gameState.m_isDualMode &&
+                     pl->m_levelSettings->m_twoPlayerMode) {
+                     return fmt::format("CPS: {} / {}", cps1, cps2);
+                 } else {
+                     return fmt::format("CPS: {}", cps1);
+                 }
+             },
+             {});
+
+    addLabel("max_cps", "Max CPS",
+             [](Label& l) {
+                 int cps1 = Bot::get()->cps().queryMaxCPS(1);
+                 int cps2 = Bot::get()->cps().queryMaxCPS(2);
+
+                 auto pl = GJBaseGameLayer::get();
+                 if (cps1 > 16 || cps2 > 16) {
+                     l.get()->setColor(ccc3(255, 128, 128));
+                 } else {
+                     l.get()->setColor(ccc3(255, 255, 255));
+                 }
+
+                 if (pl->m_levelSettings->m_twoPlayerMode) {
+                     return fmt::format("Max CPS: {} / {}", cps1, cps2);
+                 } else {
+                     return fmt::format("Max CPS: {}", cps1);
+                 }
+             },
+             {});
+
+    addLabel("last_input", "Ticks Since Last Input",
+             [](Label&) {
+                 uint64_t tick = Bot::get()->updater().getFrame();
+                 auto& rs = Bot::get()->replaySystem();
+
+                 if (Bot::get()->isRecording()) {
+                     if (!rs.m_actionAtom.m_actions.empty()) {
+                         auto& action = rs.m_actionAtom.m_actions.back();
+                         return fmt::format("Ticks Since Last Input: {}",
+                                            tick - action.m_frame);
+                     } else {
+                         return fmt::format("No Inputs In Replay");
+                     }
+                 } else {
+                     size_t length = rs.m_actionAtom.length();
+                     if (length != 0) {
+                         if (rs.m_inputIndex == 0) {
+                             return fmt::format("Waiting For First Input");
+                         }
+
+                         auto& action =
+                             rs.m_actionAtom.m_actions[rs.m_inputIndex - 1];
+
+                         return fmt::format("Ticks Since Last Input: {}",
+                                            tick - action.m_frame);
+                     } else {
+                         return fmt::format("No Inputs In Replay");
+                     }
                  }
              },
              {});
@@ -251,7 +330,7 @@ CCLabelBMFont* Label::get() {
                 break;
         }
 
-        label = CCLabelBMFont::create(m_display().c_str(), m_font.c_str());
+        label = CCLabelBMFont::create("Loading...", m_font.c_str());
 
         label->setID(cocosLabelID);
         label->setScale(m_config.m_scale);
@@ -328,7 +407,7 @@ void Label::update(bool forceDisable, bool refresh, float& currentHeight) {
         }
 
         label->setVisible(m_config.m_enabled && !forceDisable);
-        label->setString(m_display().c_str());
+        label->setString(m_display(*this).c_str());
     }
 }
 

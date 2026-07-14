@@ -31,6 +31,7 @@ class ImGuiHookCtx {
 
     tabby::Context m_ctx;
     HWND m_hWnd = nullptr;
+    void* m_glfwWindow = nullptr;
     GLuint m_inputTex;
     GLint m_oldFbo;
     GLint m_oldProgram;
@@ -56,6 +57,7 @@ class ImGuiHookCtx {
 
     RenderData m_renderData;
     void init(cocos2d::CCEGLView* view);
+    void reinitForNewWindow(cocos2d::CCEGLView* view, HDC hdc, HWND hWnd);
 
     void preSampleBlur(ImVec4 windowPos);
     void sampleBlurFirstPass();

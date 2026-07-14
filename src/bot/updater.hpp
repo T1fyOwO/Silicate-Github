@@ -38,6 +38,8 @@ class BotUpdater {
     bool m_onlyRefresh = false;
     void* m_actionMgr = 0;
 
+    double m_timewarpTime = 0.0;
+
     SLValuePtr<bool> m_stepOnce =
         SLValue<bool>::create("updater.advance_one", &_stepOnce);
 
@@ -83,6 +85,10 @@ class BotUpdater {
 
     SLValuePtr<bool> m_speedhackAudio = SLValue<bool>::create(
         "updater.speedhack_audio", &SLSettings::get()->speedhackAudio);
+
+    SLValuePtr<bool> m_showLabelsWhileRendering =
+        SLValue<bool>::create("updater.show_labels_while_rendering",
+                              &SLSettings::get()->showLabelsWhileRendering);
 
     int savedStepCount = 0;
     int totalStepCount = 0;
@@ -196,7 +202,10 @@ class BotUpdater {
      * Incrementing the frame WILL forward time in the macro.
      */
     void incrementFrame() { m_frame++; }
-    void resetFrame() { m_frame = 0; }
+    void resetFrame() {
+        m_frame = 0;
+        m_timewarpTime = 0.0;
+    }
     void setFrame(uint32_t frame) { m_frame = frame; }
 
     bool isPaused() { return m_paused->inner(); }

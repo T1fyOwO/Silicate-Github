@@ -9,6 +9,7 @@
 #include <safetyhook.hpp>
 #include <vector>
 
+#include "assist/cps.hpp"
 #include "bot/bot.hpp"
 #include "bot/updater.hpp"
 #include "checkpoint/fix.hpp"
@@ -208,7 +209,9 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
             return;
         }
 
-        if (!updater.isLockDelta() || !PlayLayer::get()) {
+        bool lockDelta = updater.isLockDelta() && PlayLayer::get();
+
+        if (!lockDelta) {
             // Must be lock delta off OR is editor
             updater.calculateSteps(dt, updater.getPhysicsDt());
         }
@@ -230,7 +233,7 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
                 this->storeActualState();
             }
         } else {
-            if (updater.isLockDelta() || updater.estimatedStepCount != 0) {
+            if (lockDelta || updater.estimatedStepCount != 0) {
                 GJBaseGameLayer::update(dt);
                 this->storeActualState();
             }
@@ -303,6 +306,10 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
             bot->updater().getFrame(),
             static_cast<slc::Action::ActionType>(cmd.m_button), cmd.m_isPush,
             bot->replaySystem().playerFlipped(cmd.m_isPlayer2));
+
+        if (cmd.m_button == PlayerButton::Jump && cmd.m_isPush) {
+            bot->cps().pushAction(replay.m_actions.back());
+        }
     }
 
     void performMaintainGravity() {
@@ -443,6 +450,10 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
 
         if (button == 0 || button > 3) {
             return;
+        }
+
+        if (button == 1 && action.m_holding) {
+            bot->cps().pushAction(action);
         }
 
         this->queueButton(button, action.m_holding,
