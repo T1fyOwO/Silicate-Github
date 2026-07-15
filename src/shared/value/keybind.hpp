@@ -31,21 +31,111 @@ struct glz::meta<RawKeybind> {
 };
 // clang-format on
 
+namespace keybind {
+
+enum Modifier : int {
+    Shift = 0b100,
+    Ctrl = 0b010,
+    Alt = 0b001,
+};
+
+inline int packModifiers(bool ctrl, bool shift, bool alt) {
+    return (ctrl ? Ctrl : 0) | (shift ? Shift : 0) | (alt ? Alt : 0);
+}
+
+inline int makeHash(int key, int modifiers) { return key | (modifiers << 20); }
+
+inline bool isModifierKey(int key) {
+    switch (key) {
+        case 0x10:  // VK_SHIFT
+        case 0x11:  // VK_CONTROL
+        case 0x12:  // VK_MENU
+        case 0xA0:  // VK_LSHIFT
+        case 0xA1:  // VK_RSHIFT
+        case 0xA2:  // VK_LCONTROL
+        case 0xA3:  // VK_RCONTROL
+        case 0xA4:  // VK_LMENU
+        case 0xA5:  // VK_RMENU
+            return true;
+        default:
+            return false;
+    }
+}
+
+inline std::string keyName(int key) {
+    if ((key >= '0' && key <= '9') || (key >= 'A' && key <= 'Z'))
+        return std::string(1, static_cast<char>(key));
+    if (key >= 0x70 && key <= 0x87)  // VK_F1 .. VK_F24
+        return "F" + std::to_string(key - 0x6F);
+
+    switch (key) {
+        case 0x08:
+            return "Backspace";
+        case 0x09:
+            return "Tab";
+        case 0x0D:
+            return "Enter";
+        case 0x1B:
+            return "Escape";
+        case 0x20:
+            return "Space";
+        case 0x21:
+            return "Page Up";
+        case 0x22:
+            return "Page Down";
+        case 0x23:
+            return "End";
+        case 0x24:
+            return "Home";
+        case 0x25:
+            return "Left";
+        case 0x26:
+            return "Up";
+        case 0x27:
+            return "Right";
+        case 0x28:
+            return "Down";
+        case 0x2D:
+            return "Insert";
+        case 0x2E:
+            return "Delete";
+        case 0x97:
+            return "Wheel Up";
+        case 0x98:
+            return "Wheel Down";
+        default:
+            return "Key " + std::to_string(key);
+    }
+}
+
+inline std::string keyLabel(int key, int modifiers) {
+    std::string label;
+    if (modifiers & Ctrl) label += "Ctrl + ";
+    if (modifiers & Shift) label += "Shift + ";
+    if (modifiers & Alt) label += "Alt + ";
+    label += keyName(key);
+    return label;
+}
+
+}  // namespace keybind
+
 class KeybindControl {
    protected:
-    int m_key;
-    int m_modifiers;
-    std::string m_valueTag;
-
     KeybindType m_type;
     bool m_enabled = false;
     bool m_active = true;
 
    public:
+    std::string m_valueTag;
+    int m_key;
+    int m_modifiers;
+
     using HashT = int;
 
-    virtual HashT getHash() = 0;
-    const virtual std::string& getTag() = 0;
+    HashT getHash() { return keybind::makeHash(m_key, m_modifiers); }
+    const std::string& getTag() { return m_valueTag; }
+    std::string getKeyLabel() { return keybind::keyLabel(m_key, m_modifiers); }
+
     virtual void applyValue(bool pressed, void* value, void* previous) = 0;
     virtual void fromString(const std::string& str) = 0;
     const virtual std::string toString() = 0;
@@ -78,10 +168,6 @@ class SLKeybind : public KeybindControl {
      * - Set the value on key press, but don't change it back
      */
 
-    static constexpr int MODIFIER_SHIFT = 0b100;
-    static constexpr int MODIFIER_CTRL = 0b010;
-    static constexpr int MODIFIER_ALT = 0b001;
-
    private:
     // What value to set when the keybind is pressed
     T m_value;
@@ -110,10 +196,6 @@ class SLKeybind : public KeybindControl {
         return std::make_shared<SLKeybind<T>>(key, modifiers, type,
                                               Self::readFromString(value), tag);
     }
-
-    HashT getHash() override { return m_key | (m_modifiers << 20); }
-
-    const std::string& getTag() override { return m_valueTag; }
 
     void applyValue(bool pressed, void* value, void* previous) override {
         if (!m_active) return;

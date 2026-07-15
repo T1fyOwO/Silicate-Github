@@ -30,17 +30,13 @@ struct SLCCDirector : Modify<SLCCDirector, CCDirector> {
              renderer->m_settings.m_firstAttemptPause)) {
             float dt = Renderer::get()->getDt();
 
-            SL_LOG_DEV("Checking if renderer collected in drawScene...");
-            if (renderer->m_halting) {
-                SL_LOG_DEV("Collected so not updating yet...");
+            if (!renderer->tryBeginFrame()) {
                 renderer->displayPreview();
                 this->m_pobOpenGLView->swapBuffers();
 
                 Bot::get()->updater().runFrozenTick();
                 return;
             }
-
-            SL_LOG_DEV("Updating because not collected yet...");
 
             // nuh uh
             if (!m_bPaused) {

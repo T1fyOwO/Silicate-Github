@@ -1,13 +1,10 @@
 # Silicate
 
-This is the main repository for the Silicate bot. 
+This is the main repository for the Silicate bot.
 
-## Versioning
+## End of life notice
 
-Currently the bot is in **alpha**, which means we use `1.0.0-alpha.XX` builds.
-When releasing a beta build, use `1.0.0-beta.XX` builds.
-
-Upon release, we will migrate to a different versioning system - preferably something like `2026.01-01` for the first build in January 2026.
+Silicate is being rewritten (version 2). This version will be maintained enough to not have breaking issues until v2 is fully ready.
 
 ## Structure
 
@@ -32,8 +29,7 @@ lib/
 
 ## Compiling
 
-1. Clone [`tabby`](https://github.com/silicate-bot/tabby) into lib/tabby. Make sure you're on the `legacy-v1` branch (until we migrate lol).
-2. Run `build.bat` or `build-rel.bat` if you're compiling for public use. (Use `build.sh` if you're on Linux!)
+1. Run `build.bat` or `build-rel.bat` if you're compiling for public use. (Use `build.sh` if you're on Linux!)
 
 ## Contributing
 

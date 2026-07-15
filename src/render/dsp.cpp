@@ -46,8 +46,10 @@ FMOD_RESULT F_CALLBACK AudioRecorder::monitorReadCallback(
     const size_t got = recorder->m_monRing.pop(out, n);
 
     const float gain = recorder->m_monVolume.load(std::memory_order_relaxed);
+    float attenuation = Renderer::get()->m_fadeThreshold;
+
     for (size_t i = 0; i < got; ++i) {
-        out[i] *= gain;
+        out[i] *= gain * attenuation;
     }
 
     if (got < n) {
@@ -63,8 +65,11 @@ void AudioRecorder::haltWithData(float* data, unsigned int length) {
 
     m_buffer.insert(m_buffer.end(), data, data + length);
 
+    float attenuation = Renderer::get()->m_fadeThreshold;
+
     for (size_t i = m_buffer.size() - length; i < m_buffer.size(); i++) {
         m_buffer[i] = std::clamp(m_buffer[i], -1.0f, 1.0f);
+        m_buffer[i] *= attenuation;
     }
 
     SL_LOG_DEV("Setting collected data to true");

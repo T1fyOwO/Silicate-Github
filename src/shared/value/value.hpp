@@ -1,5 +1,6 @@
 #pragma once
 #include <Geode/Geode.hpp>
+#include <algorithm>
 #include <functional>
 #include <glaze/json/read.hpp>
 #include <memory>
@@ -32,9 +33,39 @@ class SLBindingManager {
     SLBindingManager() = default;
 
     bool m_needsNewKey = false;
-    cocos2d::enumKeyCodes m_newKey;
+    KeybindControl* m_currentlyEdited = nullptr;
 
     bool m_hasRead = false;
+
+    void loadDefaults() {
+        struct DefaultBind {
+            int key;
+            int modifiers;
+            const char* tag;
+        };
+
+        static constexpr DefaultBind defaults[] = {
+            {70, 0, "ui.visible"},             // F
+            {86, 0, "updater.frame_advance"},  // V
+            {66, 0, "updater.advance_back"},   // B
+            {67, 0, "updater.advance_one"},    // C
+            {84, 0, "trajectory.enabled"},     // T
+            {18, keybind::Alt, "ui.visible"},  // Alt
+        };
+
+        for (const auto& d : defaults) {
+            auto it = m_values.find(d.tag);
+            if (it == m_values.end()) {
+                geode::log::error("No value registered for default keybind {}",
+                                  d.tag);
+                continue;
+            }
+
+            RawKeybind raw{d.key, d.modifiers, d.tag, KeybindType::Toggle,
+                           true,  "1"};
+            this->registerKeybind(it->second->createKeybind(raw));
+        }
+    }
 
    public:
     static SLBindingManager* get() {
@@ -69,52 +100,7 @@ class SLBindingManager {
                 "Failed to read keybinds: {}, assuming default keybinds",
                 helpful);
 
-            {
-                auto kb = RawKeybind{
-                    70, 0, "ui.visible", KeybindType::Toggle, true, "1"};
-                this->registerKeybind(
-                    m_values["ui.visible"]->createKeybind(kb));
-            }
-
-            {
-                auto kb = RawKeybind{
-                    86,   0,  "updater.frame_advance", KeybindType::Toggle,
-                    true, "1"};
-                this->registerKeybind(
-                    m_values["updater.frame_advance"]->createKeybind(kb));
-            }
-
-            {
-                auto kb = RawKeybind{
-                    66,   0,  "updater.advance_back", KeybindType::Toggle,
-                    true, "1"};
-                this->registerKeybind(
-                    m_values["updater.advance_back"]->createKeybind(kb));
-            }
-
-            {
-                auto kb = RawKeybind{
-                    67,   0,  "updater.advance_one", KeybindType::Toggle,
-                    true, "1"};
-                this->registerKeybind(
-                    m_values["updater.advance_one"]->createKeybind(kb));
-            }
-
-            {
-                auto kb = RawKeybind{
-                    84,   0,  "trajectory.enabled", KeybindType::Toggle,
-                    true, "1"};
-                this->registerKeybind(
-                    m_values["trajectory.enabled"]->createKeybind(kb));
-            }
-
-            {
-                auto kb = RawKeybind{
-                    18, 1, "ui.visible", KeybindType::Toggle, true, "1"};
-                this->registerKeybind(
-                    m_values["ui.visible"]->createKeybind(kb));
-            }
-
+            this->loadDefaults();
             return;
         } else {
             geode::log::info("Read keybinds successfully!");
@@ -133,16 +119,48 @@ class SLBindingManager {
         }
     }
 
-    void wantNewKey() { m_needsNewKey = true; }
+    void startEdit(KeybindControl* k) {
+        m_currentlyEdited = k;
+        m_needsNewKey = true;
+    }
 
-    void setNewKey(cocos2d::enumKeyCodes key) { m_newKey = key; }
-    cocos2d::enumKeyCodes getNewKey() {
-        if (m_needsNewKey) {
+    void stopEdit() {
+        m_currentlyEdited = nullptr;
+        m_needsNewKey = false;
+    }
+
+    bool wantsCapture() { return m_needsNewKey; }
+    bool isEditing(KeybindControl* k) {
+        return m_currentlyEdited == k && m_needsNewKey;
+    }
+
+    void takeInput(int keyCode, bool shift, bool ctrl, bool alt) {
+        if (m_currentlyEdited == nullptr) {
             m_needsNewKey = false;
-            return m_newKey;
-        } else {
-            return cocos2d::enumKeyCodes::KEY_None;
+            return;
         }
+
+        if (keybind::isModifierKey(keyCode)) return;
+
+        // shitcode
+        auto& bucket = m_keybinds[m_currentlyEdited->getHash()];
+        auto it = std::ranges::find_if(
+            bucket, [this](auto& k) { return k.get() == m_currentlyEdited; });
+
+        std::shared_ptr<KeybindControl> kb;
+        if (it != bucket.end()) {
+            kb = *it;
+            bucket.erase(it);
+        }
+
+        m_currentlyEdited->m_key = keyCode;
+        m_currentlyEdited->m_modifiers =
+            keybind::packModifiers(ctrl, shift, alt);
+
+        if (kb) this->registerKeybind(kb);
+
+        m_currentlyEdited = nullptr;
+        m_needsNewKey = false;
     }
 
     SLBindingManager(SLBindingManager const&) = delete;
@@ -150,6 +168,11 @@ class SLBindingManager {
 
     void registerValue(std::shared_ptr<SLBindingInterface> value) {
         m_values[value->getId()] = value;
+    }
+
+    const std::unordered_map<KeybindControl::HashT, KeybindVector>&
+    getKeybinds() {
+        return m_keybinds;
     }
 
     void registerKeybind(std::shared_ptr<KeybindControl> kb) {
@@ -163,20 +186,19 @@ class SLBindingManager {
 
     void processKeyEvent(int key, bool pressed, bool ctrl, bool shift,
                          bool alt) {
-        int modifiers = 0;
-        if (ctrl) modifiers |= SLKeybind<void*>::MODIFIER_CTRL;
-        if (shift) modifiers |= SLKeybind<void*>::MODIFIER_SHIFT;
-        if (alt) modifiers |= SLKeybind<void*>::MODIFIER_ALT;
-        KeybindControl::HashT hash = key | (modifiers << 20);
+        KeybindControl::HashT hash =
+            keybind::makeHash(key, keybind::packModifiers(ctrl, shift, alt));
 
-        if (!m_keybinds.contains(hash)) return;
-        for (const auto& keybind : m_keybinds[hash]) {
-            if (!m_values.contains(keybind->getTag())) return;
+        auto bucket = m_keybinds.find(hash);
+        if (bucket == m_keybinds.end()) return;
 
-            auto value = m_values[keybind->getTag()];
-            keybind->applyValue(pressed, value->getValue(),
-                                value->getPrevious());
-            value->notifyChange();
+        for (const auto& kb : bucket->second) {
+            auto value = m_values.find(kb->getTag());
+            if (value == m_values.end()) continue;
+
+            kb->applyValue(pressed, value->second->getValue(),
+                           value->second->getPrevious());
+            value->second->notifyChange();
         }
     }
 };

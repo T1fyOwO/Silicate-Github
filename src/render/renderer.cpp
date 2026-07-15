@@ -348,10 +348,13 @@ geode::Result<> Renderer::start() {
     m_videoCodecCtx->framerate = {m_settings.m_fps, 1};
     m_videoCodecCtx->max_b_frames = 0;  // youtube doesn't like bframes at all
 
+    const bool isRgb = m_settings.m_pixFmt == AV_PIX_FMT_RGB24 ||
+                       m_settings.m_pixFmt == AV_PIX_FMT_RGB0;
+
     m_videoCodecCtx->color_primaries = AVCOL_PRI_BT709;
-    m_videoCodecCtx->colorspace = AVCOL_SPC_BT709;
     m_videoCodecCtx->color_trc = AVCOL_TRC_BT709;
-    m_videoCodecCtx->color_range = AVCOL_RANGE_MPEG;
+    m_videoCodecCtx->colorspace = isRgb ? AVCOL_SPC_RGB : AVCOL_SPC_BT709;
+    m_videoCodecCtx->color_range = isRgb ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
 
     if (m_formatCtx->oformat->flags & AVFMT_GLOBALHEADER) {
         m_videoCodecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -479,6 +482,8 @@ geode::Result<> Renderer::start() {
     m_updateIndex = 0;
     m_bufferPts = 0;
     m_ptsQueue.clear();
+    m_frameQueue.clear();
+    m_encoded = 0;
 
     m_recording = true;
     m_texture.m_width = m_settings.m_width;
@@ -534,16 +539,6 @@ geode::Result<> Renderer::encode(uint8_t* data, size_t size) {
     m_frame->width = m_videoCodecCtx->width;
     m_frame->height = m_videoCodecCtx->height;
 
-    int ret = ff->av_frame_get_buffer(m_frame.get(), 1);
-    if (ret < 0) {
-        return geode::Err("Failed to allocate frame buffer: {}", ret);
-    }
-
-    ret = ff->av_frame_make_writable(m_frame.get());
-    if (ret < 0) {
-        return geode::Err("Failed to make frame writable");
-    }
-
     ff->av_image_fill_linesizes(m_frame->linesize, m_settings.m_pixFmt,
                                 m_alignedWidth);
 
@@ -558,7 +553,7 @@ geode::Result<> Renderer::encode(uint8_t* data, size_t size) {
     // (the readback pipeline runs one frame behind m_updateIndex).
     m_frame->pts = m_bufferPts;
 
-    ret = ff->avcodec_send_frame(m_videoCodecCtx.get(), m_frame.get());
+    int ret = ff->avcodec_send_frame(m_videoCodecCtx.get(), m_frame.get());
     if (ret < 0) {
         // format error
         if (ret == AVERROR(EAGAIN)) {
@@ -710,9 +705,6 @@ geode::Result<> Renderer::stop() {
         return geode::Err("Failed to write trailer");
     }
 
-    m_halting = false;
-    m_collected = false;
-
     geode::log::info("Rendering has stopped. Cleaning up");
 
     if (m_frame) {
@@ -735,35 +727,45 @@ geode::Result<> Renderer::stop() {
 }
 
 void Renderer::recordLoop() {
-    while (m_recording || m_collected) {
+    while (true) {
+        QueuedFrame frame;
         {
             std::unique_lock<std::mutex> lock(m_recordMutex);
-            m_recordCv.wait(lock,
-                            [this] { return m_collected || !m_recording; });
-        }
+            m_recordCv.wait(
+                lock, [this] { return !m_frameQueue.empty() || !m_recording; });
 
-        if (m_collected) {
-            {
-                auto ret = this->encode(m_buffer, m_bufferSize);
-                if (ret.isErr()) {
-                    geode::log::error("Failed to encode frame: {}",
-                                      ret.unwrapErr());
+            if (m_frameQueue.empty()) {
+                // nothing queued and recording is done: drain complete
+                if (!m_recording) {
                     break;
                 }
+                continue;
             }
 
-            {
-                auto ret = this->write();
-                if (ret.isErr()) {
-                    geode::log::error("Failed to write frame: {}",
-                                      ret.unwrapErr());
-                    break;
-                }
-            }
-
-            m_collected = false;
-            m_halting = false;
+            frame = m_frameQueue.front();
+            m_frameQueue.pop_front();
         }
+
+        m_bufferPts = frame.m_pts;
+
+        {
+            auto ret = this->encode(frame.m_data, m_bufferSize);
+            if (ret.isErr()) {
+                geode::log::error("Failed to encode frame: {}",
+                                  ret.unwrapErr());
+                break;
+            }
+        }
+
+        {
+            auto ret = this->write();
+            if (ret.isErr()) {
+                geode::log::error("Failed to write frame: {}", ret.unwrapErr());
+                break;
+            }
+        }
+
+        m_encoded.fetch_add(1, std::memory_order_release);
     }
 
     auto stopResult = this->stop();
@@ -773,23 +775,45 @@ void Renderer::recordLoop() {
     }
 }
 
-void Renderer::capture() {
-    // record the pts for the read
-    m_ptsQueue.push_back(m_updateIndex - 1);
-
-    bool delivered = m_texture.capture(&m_buffer);
-    if (delivered) {
-        m_bufferPts = m_ptsQueue.front();
-        m_ptsQueue.pop_front();
-        // don't publish half updated shit
-        {
-            std::lock_guard<std::mutex> lock(m_recordMutex);
-            m_collected = true;
-        }
-        m_recordCv.notify_one();
-    } else {
-        m_halting = false;
+void Renderer::enqueueFrame(uint8_t* data, int64_t pts) {
+    {
+        std::lock_guard<std::mutex> lock(m_recordMutex);
+        m_frameQueue.push_back(QueuedFrame{.m_data = data, .m_pts = pts});
     }
+    m_recordCv.notify_one();
+}
+
+void Renderer::harvestCompleted() {
+    uint8_t* data = nullptr;
+    while (m_texture.tryHarvest(&data, /* block */ false)) {
+        int64_t pts = m_ptsQueue.front();
+        m_ptsQueue.pop_front();
+        this->enqueueFrame(data, pts);
+    }
+}
+
+void Renderer::flushPending() {
+    uint8_t* data = nullptr;
+    while (m_texture.mappedCount() < m_texture.issuedCount()) {
+        if (!m_texture.tryHarvest(&data, /* block */ true)) {
+            break;
+        }
+        int64_t pts = m_ptsQueue.front();
+        m_ptsQueue.pop_front();
+        this->enqueueFrame(data, pts);
+    }
+}
+
+bool Renderer::tryBeginFrame() {
+    this->harvestCompleted();
+
+    return m_texture.issuedCount() - m_encoded.load(std::memory_order_acquire) <
+           RenderTexture::RING_SIZE;
+}
+
+void Renderer::capture() {
+    m_ptsQueue.push_back(m_updateIndex - 1);
+    m_texture.issue(m_fadeThreshold);
 }
 
 void Renderer::update(PlayLayer* pl) {
@@ -799,20 +823,36 @@ void Renderer::update(PlayLayer* pl) {
         pl->m_started || (m_settings.m_firstAttemptPause && m_seenFrames >= 2);
     m_seenFrames++;  // GD adds two "fade" frames
     if (pl->m_isPaused || !started) return;
-    if (m_halting || m_collected) return;
-    m_halting = true;
 
     m_time = ++m_updateIndex * this->getDt();
 
-    if (pl->m_hasCompletedLevel &&
-        !Bot::get()->replaySystem().getNextQueuedInput().has_value()) {
+    bool moreLevel =
+        !Bot::get()->replaySystem().getNextQueuedInput().has_value();
+
+    // fade in
+
+    if (pl->m_hasCompletedLevel && moreLevel) {
         if (this->m_endTime >= this->m_settings.m_afterEndTime) {
+            this->flushPending();
             this->signalStop();
             return;
         } else {
             this->m_endTime += this->getDt();
         }
     }
+
+    double fadeOut =
+        m_settings.m_fadeOutTime == 0
+            ? 1
+            : std::min(((this->m_settings.m_afterEndTime - this->m_endTime) /
+                        m_settings.m_fadeOutTime),
+                       1.0);
+
+    double fadeIn = m_settings.m_fadeInTime == 0
+                        ? 1
+                        : std::min(m_time / m_settings.m_fadeInTime, 1.0);
+
+    m_fadeThreshold = std::min(fadeIn, fadeOut);
 
     if (m_collectAudio) {
         AudioRecorder::get()->unpause();

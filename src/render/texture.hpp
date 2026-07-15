@@ -9,11 +9,17 @@
 
 class RenderTexture {
    public:
-    static constexpr int RING_SIZE = 3;
+    static constexpr int RING_SIZE = 8;
 
     void init(std::unique_ptr<Colorspace> colorspace);
     void destroy();
-    bool capture(uint8_t** data);
+
+    void issue(float fadeThreshold);
+    bool tryHarvest(uint8_t** outData, bool block);
+
+    int64_t issuedCount() const { return m_issued; }
+    int64_t mappedCount() const { return m_mapped; }
+
     void displayPreview();
 
    public:
@@ -31,10 +37,14 @@ class RenderTexture {
     uint32_t m_fbo[2];
 
     uint32_t m_pbo[RING_SIZE];
+    GLsync m_fence[RING_SIZE] = {};
+    uint8_t* m_slotData[RING_SIZE] =
+        {};  // mapped CPU pointer, null if unmapped
     bool m_slotMapped[RING_SIZE] = {};
     size_t m_bufferSize = 0;
-    int m_writeIndex = 0;     // slot the next readback writes into
-    int m_inflightSlot = -1;  // slot awaiting delivery, -1 if none
+
+    int64_t m_issued = 0;
+    int64_t m_mapped = 0;
 
     uint32_t m_program;
 };

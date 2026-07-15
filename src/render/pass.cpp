@@ -65,6 +65,7 @@ void RenderPass::initialize() {
     // cache uniforms
     m_uTextureLoc = glGetUniformLocation(m_program, "u_texture");
     m_uTexelSizeLoc = glGetUniformLocation(m_program, "u_texelSize");
+    m_uFadeLoc = glGetUniformLocation(m_program, "u_fade");
 
     glBindFramebuffer(GL_FRAMEBUFFER, oldFbo);
     glBindTexture(GL_TEXTURE_2D, oldTex);

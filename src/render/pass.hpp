@@ -24,6 +24,7 @@ class RenderPass {
 
     GLint m_uTextureLoc = -1;
     GLint m_uTexelSizeLoc = -1;
+    GLint m_uFadeLoc = -1;
 
     std::function<void(float, float)> m_readPixels;
 

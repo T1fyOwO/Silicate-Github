@@ -490,6 +490,22 @@ void BotUpdater::findBestFrameCandidate() {
 //
 // everything DOES work fine with this bypass
 // anyways yea yapping over heres the code:::::::::::::
+//
+//
+// addendum (15th july 2026)
+// this code sucks
+// there's one billion percent a better way to do this
+// 1. put the frameUpdateMidhook as a regular hook of processCommands
+// 2. use patches like a normal person
+// 3. profit from free performance gain because you're not saving/restoring
+// every register per frame
+//
+// yeah this is tiny perf impact but like
+// i don't like it
+// this bot is built upon hacks and hacks
+// this is why i'm rewriting it
+//
+// and yes past natalie. everything works fine. but it works like shit
 
 constexpr int ACTIONMGR_UPDATE_OFFSET = 0x38B90;
 static void* CCActionManager_update;

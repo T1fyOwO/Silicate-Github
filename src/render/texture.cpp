@@ -45,17 +45,21 @@ void RenderTexture::init(std::unique_ptr<Colorspace> colorspace) {
 
     m_bufferSize = m_colorspace->getBufferSize();
 
+    constexpr size_t kEncoderReadPadding = 2 * AV_INPUT_BUFFER_PADDING_SIZE;
+
     glGenBuffers(RING_SIZE, m_pbo);
     for (int i = 0; i < RING_SIZE; ++i) {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[i]);
-        glBufferData(GL_PIXEL_PACK_BUFFER, m_bufferSize, nullptr,
-                     GL_STREAM_READ);
+        glBufferData(GL_PIXEL_PACK_BUFFER, m_bufferSize + kEncoderReadPadding,
+                     nullptr, GL_STREAM_READ);
         m_slotMapped[i] = false;
+        m_slotData[i] = nullptr;
+        m_fence[i] = nullptr;
     }
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
-    m_writeIndex = 0;
-    m_inflightSlot = -1;
+    m_issued = 0;
+    m_mapped = 0;
 
     float vertices[] = {
         // Pos      // UVs
@@ -91,23 +95,25 @@ void RenderTexture::init(std::unique_ptr<Colorspace> colorspace) {
 #endif
 }
 
-bool RenderTexture::capture(uint8_t** data) {
+void RenderTexture::issue(float fadeThreshold) {
     auto director = cocos2d::CCDirector::sharedDirector();
 
     CCSize size = director->getOpenGLView()->getFrameSize();
     m_width = size.width;
     m_height = size.height;
 
-    int blend;
-    glGetIntegerv(GL_BLEND, &blend);
-
-    const int w = m_writeIndex;
+    const int w = m_issued % RING_SIZE;
     glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[w]);
 
     if (m_slotMapped[w]) {
         // dont let the cia take over
         glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
         m_slotMapped[w] = false;
+        m_slotData[w] = nullptr;
+    }
+    if (m_fence[w]) {
+        glDeleteSync(m_fence[w]);
+        m_fence[w] = nullptr;
     }
 
     for (size_t i = 0; i < m_passes.size(); ++i) {
@@ -139,6 +145,9 @@ bool RenderTexture::capture(uint8_t** data) {
             glUniform1i(pass.m_uTextureLoc, 1);
             glUniform2f(pass.m_uTexelSizeLoc, 1.0f / pass.m_width,
                         1.0f / pass.m_height);
+            if (pass.m_uFadeLoc != -1) {
+                glUniform1f(pass.m_uFadeLoc, fadeThreshold);
+            }
 
             glBindVertexArray(m_quadVAO);
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
@@ -151,24 +160,8 @@ bool RenderTexture::capture(uint8_t** data) {
         pass.m_readPixels(0, 0);
     }
 
-    bool delivered = false;
-    if (m_inflightSlot >= 0) {
-        const int p = m_inflightSlot;
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[p]);
-        auto* pixelData = static_cast<uint8_t*>(
-            glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY));
-        m_slotMapped[p] = (pixelData != nullptr);
-
-        if (pixelData) {
-            *data = pixelData;
-            delivered = true;
-        } else {
-            geode::log::error("Failed to map buffer: {}", glGetError());
-        }
-    }
-
-    m_inflightSlot = w;
-    m_writeIndex = (w + 1) % RING_SIZE;
+    m_fence[w] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    m_issued++;
 
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
@@ -177,8 +170,47 @@ bool RenderTexture::capture(uint8_t** data) {
 
     glUseProgram(0);
     glEnable(GL_BLEND);
+}
 
-    return delivered;
+bool RenderTexture::tryHarvest(uint8_t** outData, bool block) {
+    if (m_mapped >= m_issued) {
+        return false;  // nothing outstanding
+    }
+
+    const int p = m_mapped % RING_SIZE;
+    GLsync fence = m_fence[p];
+    if (!fence) {
+        return false;
+    }
+
+    const GLbitfield flags = block ? GL_SYNC_FLUSH_COMMANDS_BIT : 0;
+    const GLuint64 timeout = block ? 1'000'000'000ull : 0;  // 1s cap
+    GLenum status = glClientWaitSync(fence, flags, timeout);
+    if (status != GL_ALREADY_SIGNALED && status != GL_CONDITION_SATISFIED) {
+        return false;  // readback still in flight
+    }
+
+    glDeleteSync(fence);
+    m_fence[p] = nullptr;
+
+    // the fence is signaled, so the data is already in the PBO - this map won't
+    // block the GL thread
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[p]);
+    auto* pixelData =
+        static_cast<uint8_t*>(glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY));
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+    if (!pixelData) {
+        geode::log::error("Failed to map buffer: {}", glGetError());
+        m_mapped++;
+        return false;
+    }
+
+    m_slotData[p] = pixelData;
+    m_slotMapped[p] = true;
+    *outData = pixelData;
+    m_mapped++;
+    return true;
 }
 
 void RenderTexture::displayPreview() {
@@ -213,6 +245,11 @@ void RenderTexture::destroy() {
             glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[i]);
             glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
             m_slotMapped[i] = false;
+            m_slotData[i] = nullptr;
+        }
+        if (m_fence[i]) {
+            glDeleteSync(m_fence[i]);
+            m_fence[i] = nullptr;
         }
     }
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
@@ -224,8 +261,8 @@ void RenderTexture::destroy() {
     glDeleteBuffers(1, &m_quadVBO);
     glDeleteProgram(m_program);
 
-    m_inflightSlot = -1;
-    m_writeIndex = 0;
+    m_issued = 0;
+    m_mapped = 0;
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_old_fbo);
 }

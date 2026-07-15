@@ -10,6 +10,7 @@
 #include "imgui.h"
 #include "render/renderer.hpp"
 #include "replay/system.hpp"
+#include "shared/value/value.hpp"
 #include "ui/manager.hpp"
 
 using namespace geode::prelude;
@@ -46,8 +47,17 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                              wParam == VK_LWIN || wParam == VK_RWIN ||
                              wParam == VK_MENU || wParam == VK_LMENU ||
                              wParam == VK_RMENU;
-            if (ImGui::GetIO().WantCaptureKeyboard && !systemKey) {
+            auto* b = SLBindingManager::get();
+
+            bool isRelease = uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP;
+            int key = wParam;
+            if (b->wantsCapture() && isRelease) {
+                b->takeInput(key, shiftHeld, ctrlHeld, altHeld);
                 return true;
+            } else {
+                if (ImGui::GetIO().WantCaptureKeyboard && !systemKey) {
+                    return true;
+                }
             }
         }
 

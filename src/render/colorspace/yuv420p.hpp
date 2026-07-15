@@ -35,11 +35,14 @@ class YUV420PColorspace : public Colorspace {
                 out vec4 fragColor;
 
                 uniform sampler2D u_texture;
+                uniform float u_fade;
 
                 const vec3 coeffY = vec3(0.2126, 0.7152, 0.0722);
 
                 void main() {
-                    vec3 rgb = texture2D(u_texture, v_texCoord).rgb;
+                    float gamma = 1.6;
+                    float corrected = pow(u_fade, 1 / gamma);
+                    vec3 rgb = texture2D(u_texture, v_texCoord).rgb * corrected;
 
                     float y = dot(rgb, coeffY);
 
@@ -48,6 +51,7 @@ class YUV420PColorspace : public Colorspace {
 
                     gl_FragData[0] = vec4(y, 0.0, 0.0, 1.0);
                 })",
+                           .m_sourceTex = 0,
                            .m_readPixels =
                                [this](float x, float y) {
                                    glReadPixels(x, y, m_alignedWidth,
@@ -64,11 +68,14 @@ class YUV420PColorspace : public Colorspace {
             out vec4 fragColor;
 
             uniform sampler2D u_texture;
+            uniform float u_fade;
 
             const vec3 coeffU = vec3(-0.11457, -0.38543, 0.5);
 
             void main() {
-                vec3 rgb = texture2D(u_texture, v_texCoord).rgb;
+                float gamma = 1.6;
+                float corrected = pow(u_fade, 1 / gamma);
+                vec3 rgb = texture2D(u_texture, v_texCoord).rgb * corrected;
 
                 float u = dot(rgb, coeffU) + 0.5;
 
@@ -77,6 +84,7 @@ class YUV420PColorspace : public Colorspace {
 
                 gl_FragData[0] = vec4(u, 0.0, 0.0, 1.0);
             })",
+                           .m_sourceTex = 0,
                            .m_readPixels =
                                [this, yPlaneSize](float x, float y) {
                                    glReadPixels(
@@ -96,11 +104,14 @@ class YUV420PColorspace : public Colorspace {
             out vec4 fragColor;
 
             uniform sampler2D u_texture;
+            uniform float u_fade;
 
             const vec3 coeffV = vec3(0.5, -0.45415, -0.04585);
 
             void main() {
-                vec3 rgb = texture2D(u_texture, v_texCoord).rgb;
+                float gamma = 1.6;
+                float corrected = pow(u_fade, 1 / gamma);
+                vec3 rgb = texture2D(u_texture, v_texCoord).rgb * corrected;
 
                 float v = dot(rgb, coeffV) + 0.5;
 
@@ -109,6 +120,7 @@ class YUV420PColorspace : public Colorspace {
 
                 gl_FragData[0] = vec4(v, 0.0, 0.0, 1.0);
             })",
+                    .m_sourceTex = 0,
                     .m_readPixels = [this, yPlaneSize, uvPlaneSize](float x,
                                                                     float y) {
                         glReadPixels(

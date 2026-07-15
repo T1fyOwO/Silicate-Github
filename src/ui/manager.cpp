@@ -9,6 +9,7 @@
 #include <slc/formats/v3/replay.hpp>
 #include <tabby.hpp>
 #include <variant>
+#include <widgets/button.hpp>
 
 #include "Geode/utils/string.hpp"
 #include "assist/autoclicker.hpp"
@@ -23,6 +24,7 @@
 #include "replay/system.hpp"
 #include "settings/settings.hpp"
 #include "shared/keys.hpp"
+#include "shared/value/value.hpp"
 #include "trajectory/trajectory.hpp"
 // #include "widgets/hotkey.hpp"
 #include "imgui.h"
@@ -321,6 +323,7 @@ void UIManager::setup() {
     builder.AddChar(0xf00c);
     builder.AddChar(0xf51b);
     builder.AddChar(0xf004);
+    builder.AddChar(0xf0fe);
     builder.BuildRanges(&glyphRanges);
 
     ImFontConfig mediumFontCfg;
@@ -674,6 +677,13 @@ void UIManager::draw() {
                         m_state.m_currentTab == UIState::UITab::Render)
                         .pressed) {
                     m_state.m_currentTab = UIState::UITab::Render;
+                }
+
+                if (tabby::button_selector(
+                        "\uf0fe    Keybinds##Tab",
+                        m_state.m_currentTab == UIState::UITab::Keybinds)
+                        .pressed) {
+                    m_state.m_currentTab = UIState::UITab::Keybinds;
                 }
 
                 if (tabby::button_selector(
@@ -1362,6 +1372,11 @@ void UIManager::draw() {
                 tabby::drag("SFX Volume", renderer->m_settings.m_sfxVolume, 0.0,
                             1.0, 0.01, "{:.2f}");
 
+                tabby::drag("Fade In Time", renderer->m_settings.m_fadeInTime,
+                            0.0, 60.0, 0.1, "{:.1f}s");
+                tabby::drag("Fade Out Time", renderer->m_settings.m_fadeOutTime,
+                            0.0, 60.0, 0.1, "{:.1f}s");
+
                 tabby::checkbox("Record 1st Attempt Pause",
                                 renderer->m_settings.m_firstAttemptPause);
 
@@ -1411,6 +1426,69 @@ void UIManager::draw() {
             //         tabby::divider();
             //     }
             // });
+
+            tabby::tab(m_state.m_currentTab, UIState::UITab::Keybinds, [&]() {
+                auto* b = SLBindingManager::get();
+
+                auto& kbs = b->getKeybinds();
+
+                tabby::text("Keybinds", m_bold);
+
+                int row = 0;
+                for (auto& kb : kbs | std::views::values | std::views::join) {
+                    int id = row++;
+                    tabby::fraction(
+                        2.0,
+                        [&]() {
+                            // magic positioning hack
+                            // so that *empty* label doesn't get rendered
+                            //
+                            // this is why i'm rewriting the bot
+                            float dst =
+                                ImGui::GetCursorPosX() +
+                                tabby::TabbyGlobalCfg::get().widgetWidth;
+                            float width =
+                                tabby::TabbyGlobalCfg::get().widgetWidth;
+
+                            tabby::TabbyGlobalCfg::get().widgetWidth =
+                                width * 2;
+
+                            ImGui::SetCursorPosX(ImGui::GetCursorPosX() -
+                                                 width);
+
+                            tabby::input_text(fmt::format("##tagkb{}", id),
+                                              "Tag", kb->m_valueTag);
+
+                            ImGui::SetCursorPosX(dst);
+                            tabby::TabbyGlobalCfg::get().widgetWidth = width;
+
+                            tabby::spacer(8.0);
+
+                            bool isEditing = b->isEditing(kb.get());
+                            std::string buttonText =
+                                fmt::format("{}##kb{}",
+                                            isEditing ? "Press a key..."
+                                                      : kb->getKeyLabel(),
+                                            id);
+
+                            if (tabby::button(buttonText).pressed) {
+                                if (isEditing) {
+                                    b->stopEdit();
+                                } else {
+                                    b->startEdit(kb.get());
+                                }
+                            }
+
+                            // tabby::spacer(8.0);
+
+                            // tabby::input_text(
+                            //     fmt::format("##inputkb{}{}", kb->getHash(),
+                            //                 kb->getTag()),
+                            //     "Value", kb->);
+                        },
+                        16.0);
+                }
+            });
 
             tabby::tab(m_state.m_currentTab, UIState::UITab::Settings, [&]() {
                 tabby::text("Settings", m_bold);

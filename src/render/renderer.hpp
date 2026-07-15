@@ -42,6 +42,8 @@ struct RendererSettings {
     double m_sfxVolume = 1.0;
 
     bool m_firstAttemptPause = false;
+    double m_fadeInTime = 1.5;
+    double m_fadeOutTime = 1.5;
 };
 
 template <>
@@ -95,11 +97,16 @@ class Renderer {
     geode::Result<> stop();
 
     void signalStop() {
-        m_recording = false;
+        {
+            std::lock_guard<std::mutex> lock(m_recordMutex);
+            m_recording = false;
+        }
         m_recordCv.notify_one();
     }
 
     void recordLoop();
+
+    bool tryBeginFrame();
 
     void capture();
     void update(PlayLayer* pl);
@@ -138,8 +145,7 @@ class Renderer {
     bool m_shouldStart = false;
     bool m_collectAudio = true;
 
-    std::atomic<bool> m_halting = false;
-    std::atomic<bool> m_collected = false;
+    float m_fadeThreshold = 0.0;
 
     SLValuePtr<bool> m_autoVideoName = SLValue<bool>::create(
         "renderer.auto_video_name", &SLSettings::get()->automaticVideoName);
@@ -151,6 +157,15 @@ class Renderer {
     ff_t* ff = 0;
 
    private:
+    struct QueuedFrame {
+        uint8_t* m_data = nullptr;
+        int64_t m_pts = 0;
+    };
+
+    void harvestCompleted();
+    void flushPending();
+    void enqueueFrame(uint8_t* data, int64_t pts);
+
     // AVBufferRef* m_hwDeviceCtx = nullptr;
     // AVBufferRef* m_hwFramesCtx = nullptr;
     // const AVCodec* m_codec = nullptr;
@@ -217,9 +232,10 @@ class Renderer {
     int m_channels;
     int m_sampleRate;
 
-    // std::vector<uint8_t> m_buffer;
-    uint8_t* m_buffer = nullptr;
     size_t m_bufferSize = 0;
+
+    std::deque<QueuedFrame> m_frameQueue;
+    std::atomic<int64_t> m_encoded = 0;
 
     // updateindex cant be reliable pts no more cuz pts is slightly late
     int64_t m_bufferPts = 0;

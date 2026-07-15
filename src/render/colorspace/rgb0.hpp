@@ -32,12 +32,16 @@ class RGB0Colorspace : public Colorspace {
                 out vec4 fragColor;
 
                 uniform sampler2D u_texture;
+                uniform float u_fade;
 
                 void main() {
-                    vec3 rgb = texture2D(u_texture, v_texCoord).rgb;
+                    float gamma = 1.6;
+                    float corrected = pow(u_fade, 1 / gamma);
+                    vec3 rgb = texture2D(u_texture, v_texCoord).rgb * corrected;
 
                     gl_FragData[0] = vec4(rgb, 1.0);
                 })",
+                           .m_sourceTex = 0,
                            .m_readPixels = [this](float x, float y) {
                                glReadPixels(x, y, m_alignedWidth,
                                             m_alignedHeight, GL_RGBA,
