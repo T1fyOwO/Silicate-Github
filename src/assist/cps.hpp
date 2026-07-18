@@ -4,14 +4,9 @@
 #include <slc/slc.hpp>
 
 class CPSCounter {
-    struct TimedAction {
-        slc::v3::Action m_action;
-        double m_time;
-    };
-
    private:
-    std::queue<TimedAction> m_bufferedActionsP1;
-    std::queue<TimedAction> m_bufferedActionsP2;
+    std::queue<double> m_timestampsP1;
+    std::queue<double> m_timestampsP2;
 
     int m_maxCPSP1;
     int m_maxCPSP2;
@@ -21,7 +16,7 @@ class CPSCounter {
     int queryMaxCPS(int player = 1);
 
     void clearActions();
-    void pushAction(slc::v3::Action a);
+    void pushAction(bool player2);
 
     void update();
 };

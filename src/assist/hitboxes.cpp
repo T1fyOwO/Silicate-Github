@@ -217,6 +217,8 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
                              GameObject* object, const ResolvedObjectHB& hb) {
     const float width = hb.width;
 
+    const bool isEditor = pl->m_isEditor;
+
     if (object->m_isGroupDisabled || !object->m_isActivated ||
         object->m_objectType == GameObjectType::Decoration)
         return;
@@ -269,7 +271,9 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
                 cat = &hb.interactableActive;
             }
 
-            if (auto ob = object->getOrientedBox(); ob) {
+            if (auto ob =
+                    isEditor ? object->getOrientedBox() : object->m_orientedBox;
+                ob) {
                 node->drawPolygon(ob->m_corners.data(), 4, cat->fill, width,
                                   cat->line, cocos2d::BorderAlignment::Inside);
             } else {
@@ -344,7 +348,9 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
 
                 node->drawCircle(object->getPosition(), radius, hb.hazard.fill,
                                  width, hb.hazard.line, segments);
-            } else if (auto ob = object->getOrientedBox(); ob) {
+            } else if (auto ob = isEditor ? object->getOrientedBox()
+                                          : object->m_orientedBox;
+                       ob) {
                 node->drawPolygon(ob->m_corners.data(), 4, hb.hazard.fill,
                                   width, hb.hazard.line,
                                   cocos2d::BorderAlignment::Inside);

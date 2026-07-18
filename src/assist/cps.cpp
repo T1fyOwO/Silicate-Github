@@ -5,9 +5,9 @@
 
 int CPSCounter::queryCPS(int player) {
     if (player == 1) {
-        return m_bufferedActionsP1.size();
+        return m_timestampsP1.size();
     } else if (player == 2) {
-        return m_bufferedActionsP2.size();
+        return m_timestampsP2.size();
     }
 
     return -1;
@@ -27,43 +27,33 @@ void CPSCounter::clearActions() {
     m_maxCPSP1 = 0;
     m_maxCPSP2 = 0;
 
-    while (!m_bufferedActionsP1.empty()) m_bufferedActionsP1.pop();
-    while (!m_bufferedActionsP2.empty()) m_bufferedActionsP2.pop();
+    while (!m_timestampsP1.empty()) m_timestampsP1.pop();
+    while (!m_timestampsP2.empty()) m_timestampsP2.pop();
 }
 
-void CPSCounter::pushAction(slc::v3::Action a) {
+void CPSCounter::pushAction(bool player2) {
     double time = GJBaseGameLayer::get()->m_gameState.m_levelTime;
 
-    if (a.m_player2) {
-        m_bufferedActionsP2.push({
-            .m_action = a,
-            .m_time = time,
-        });
+    if (player2) {
+        m_timestampsP2.push(time);
     } else {
-        m_bufferedActionsP1.push({
-            .m_action = a,
-            .m_time = time,
-        });
+        m_timestampsP1.push(time);
     }
 
-    m_maxCPSP1 =
-        std::max(m_maxCPSP1, static_cast<int>(m_bufferedActionsP1.size()));
-    m_maxCPSP2 =
-        std::max(m_maxCPSP2, static_cast<int>(m_bufferedActionsP2.size()));
+    m_maxCPSP1 = std::max(m_maxCPSP1, static_cast<int>(m_timestampsP1.size()));
+    m_maxCPSP2 = std::max(m_maxCPSP2, static_cast<int>(m_timestampsP2.size()));
 }
 
 void CPSCounter::update() {
-    if (m_bufferedActionsP1.empty() && m_bufferedActionsP2.empty()) return;
+    if (m_timestampsP1.empty() && m_timestampsP2.empty()) return;
 
-    double twTime = GJBaseGameLayer::get()->m_gameState.m_levelTime;
+    double time = GJBaseGameLayer::get()->m_gameState.m_levelTime;
 
-    while (!m_bufferedActionsP1.empty() &&
-           twTime - m_bufferedActionsP1.front().m_time > 1.0) {
-        m_bufferedActionsP1.pop();
+    while (!m_timestampsP1.empty() && time - m_timestampsP1.front() > 1.0) {
+        m_timestampsP1.pop();
     }
 
-    while (!m_bufferedActionsP2.empty() &&
-           twTime - m_bufferedActionsP2.front().m_time > 1.0) {
-        m_bufferedActionsP2.pop();
+    while (!m_timestampsP2.empty() && time - m_timestampsP2.front() > 1.0) {
+        m_timestampsP2.pop();
     }
 }

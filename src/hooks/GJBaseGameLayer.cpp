@@ -308,7 +308,7 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
             bot->replaySystem().playerFlipped(cmd.m_isPlayer2));
 
         if (cmd.m_button == PlayerButton::Jump && cmd.m_isPush) {
-            bot->cps().pushAction(replay.m_actions.back());
+            bot->cps().pushAction(cmd.m_isPlayer2);
         }
     }
 
@@ -453,7 +453,7 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
         }
 
         if (button == 1 && action.m_holding) {
-            bot->cps().pushAction(action);
+            bot->cps().pushAction(action.m_player2);
         }
 
         this->queueButton(button, action.m_holding,
