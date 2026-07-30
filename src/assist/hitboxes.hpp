@@ -39,12 +39,14 @@ class Hitboxes {
         }
     };
 
-    HitboxesDrawNode* m_drawNode;
+    cocos2d::CCNode* m_container = nullptr;
 
-    HitboxesDrawNode* m_solidTrailDrawNode;
-    HitboxesDrawNode* m_rotatedTrailDrawNode;
-    HitboxesDrawNode* m_innerTrailDrawNode;
-    HitboxesDrawNode* m_circleTrailDrawNode;
+    HitboxesDrawNode* m_drawNode = nullptr;
+
+    HitboxesDrawNode* m_solidTrailDrawNode = nullptr;
+    HitboxesDrawNode* m_rotatedTrailDrawNode = nullptr;
+    HitboxesDrawNode* m_innerTrailDrawNode = nullptr;
+    HitboxesDrawNode* m_circleTrailDrawNode = nullptr;
 
     bool _enabled = false;
     std::deque<HitboxTrailUnit> m_trailP1;

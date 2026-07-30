@@ -144,11 +144,14 @@ class Renderer {
 
     bool m_shouldStart = false;
     bool m_collectAudio = true;
+    bool m_shouldQuit = false;
 
     float m_fadeThreshold = 0.0;
 
     SLValuePtr<bool> m_autoVideoName = SLValue<bool>::create(
         "renderer.auto_video_name", &SLSettings::get()->automaticVideoName);
+    SLValuePtr<bool> m_autoExitLevel = SLValue<bool>::create(
+        "renderer.auto_exit_level", &SLSettings::get()->autoExitLevel);
     SLValuePtr<std::string> m_videoNameTemplate = SLValue<std::string>::create(
         "renderer.video_name_template", &SLSettings::get()->videoNameTemplate);
 
@@ -220,6 +223,8 @@ class Renderer {
 
     std::mutex m_recordMutex;
     std::condition_variable m_recordCv;
+
+    std::mutex m_muxMutex;
 
     int m_frameCount = 0;
     int m_audioFrameCount = 0;

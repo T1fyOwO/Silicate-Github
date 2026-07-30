@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <tabby.hpp>
+#include <unordered_map>
 #include <vector>
 
 #include "../settings/settings.hpp"
@@ -187,6 +188,22 @@ struct UIState {
     tabby::ColorState m_hitboxColorState;
     tabby::ColorState m_groundColorState;
     tabby::ColorState m_bgColorState;
+
+    struct KeybindEdit {
+        std::string tag;
+        std::string value;
+        uint64_t seen = 0;
+    };
+
+    std::unordered_map<KeybindControl*, KeybindEdit> m_keybindEdits;
+    KeybindControl* m_editedKeybindTag = nullptr;
+    KeybindControl* m_editedKeybindValue = nullptr;
+    uint64_t m_keybindEditGeneration = 0;
+
+    // Retagging destroys the control being drawn, so it can't happen while the
+    // keybind list is still being iterated. Deferred to the end of the tab.
+    KeybindControl* m_pendingRetag = nullptr;
+    std::string m_pendingRetagTag;
 
     void toggle() { m_visible->inner() = !m_visible->inner(); }
 };

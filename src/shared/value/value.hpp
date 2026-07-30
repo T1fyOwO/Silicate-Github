@@ -17,6 +17,9 @@ struct SLBindingInterface {
     virtual void* getValue() = 0;
     virtual void* getPrevious() = 0;
 
+    // identifies the T that getValue()/getPrevious() actually point at
+    virtual keybind::TypeKey getTypeKey() = 0;
+
     virtual void notifyChange() = 0;
     virtual std::shared_ptr<KeybindControl> createKeybind(RawKeybind& kb) = 0;
 
@@ -54,16 +57,17 @@ class SLBindingManager {
         };
 
         for (const auto& d : defaults) {
-            auto it = m_values.find(d.tag);
-            if (it == m_values.end()) {
+            RawKeybind raw{d.key, d.modifiers, d.tag, KeybindType::Toggle,
+                           true,  "1"};
+
+            auto kb = this->makeKeybind(raw);
+            if (!kb) {
                 geode::log::error("No value registered for default keybind {}",
                                   d.tag);
                 continue;
             }
 
-            RawKeybind raw{d.key, d.modifiers, d.tag, KeybindType::Toggle,
-                           true,  "1"};
-            this->registerKeybind(it->second->createKeybind(raw));
+            this->registerKeybind(kb);
         }
     }
 
@@ -106,16 +110,16 @@ class SLBindingManager {
             geode::log::info("Read keybinds successfully!");
         }
 
-        for (auto& kb : vec) {
-            if (!m_values.contains(kb.m_valueTag)) {
+        for (auto& raw : vec) {
+            auto kb = this->makeKeybind(raw);
+            if (!kb) {
                 geode::log::error(
                     "Failed to register keybind for tag {}. Does it exist?",
-                    kb.m_valueTag);
+                    raw.m_valueTag);
                 continue;
             }
 
-            auto value = m_values[kb.m_valueTag];
-            this->registerKeybind(value->createKeybind(kb));
+            this->registerKeybind(kb);
         }
     }
 
@@ -170,6 +174,47 @@ class SLBindingManager {
         m_values[value->getId()] = value;
     }
 
+    bool hasValue(const std::string& tag) const {
+        return m_values.contains(tag);
+    }
+
+    // Always build a keybind from the value its tag names: SLKeybind<T> casts
+    // the value's storage to T, so the two can never be picked independently.
+    std::shared_ptr<KeybindControl> makeKeybind(RawKeybind& raw) {
+        auto value = m_values.find(raw.m_valueTag);
+        if (value == m_values.end()) return nullptr;
+
+        return value->second->createKeybind(raw);
+    }
+
+    // Retagging can't just overwrite the string -- the new tag may name a value
+    // of a different type, so the control has to be rebuilt around it. Returns
+    // false and changes nothing if the tag is unknown; on success `kb` is
+    // destroyed and the replacement takes its slot.
+    bool retagKeybind(KeybindControl* kb, const std::string& tag) {
+        if (kb == nullptr || kb->getTag() == tag) return false;
+
+        RawKeybind raw{kb->m_key,   kb->m_modifiers, tag,
+                       kb->getType(), kb->isActive(), kb->toString()};
+
+        auto replacement = this->makeKeybind(raw);
+        if (!replacement) return false;
+
+        auto bucket = m_keybinds.find(kb->getHash());
+        if (bucket == m_keybinds.end()) return false;
+
+        auto it = std::ranges::find_if(bucket->second,
+                                       [kb](auto& k) { return k.get() == kb; });
+        if (it == bucket->second.end()) return false;
+
+        // key and modifiers are unchanged, so the bucket is still the right one
+        if (m_currentlyEdited == kb) m_currentlyEdited = replacement.get();
+        *it = replacement;
+
+        geode::log::info("Retagged keybind to {}", tag);
+        return true;
+    }
+
     const std::unordered_map<KeybindControl::HashT, KeybindVector>&
     getKeybinds() {
         return m_keybinds;
@@ -195,6 +240,20 @@ class SLBindingManager {
         for (const auto& kb : bucket->second) {
             auto value = m_values.find(kb->getTag());
             if (value == m_values.end()) continue;
+
+            // applyValue reinterprets the value's storage as the keybind's T,
+            // so a disagreement here would corrupt it. Shouldn't happen now
+            // that keybinds are always built from their tag's value, but a
+            // hand-edited keybinds.json shouldn't be able to smash memory.
+            if (kb->getTypeKey() != value->second->getTypeKey()) {
+                if (pressed) {
+                    geode::log::error(
+                        "Keybind for {} disagrees with the value's type, "
+                        "ignoring it",
+                        kb->getTag());
+                }
+                continue;
+            }
 
             kb->applyValue(pressed, value->second->getValue(),
                            value->second->getPrevious());
@@ -245,6 +304,8 @@ class SLValue : public KeybindContainer<T>, public SLBindingInterface {
     void* getValue() override { return m_value; }
 
     void* getPrevious() override { return &m_previousValue; }
+
+    keybind::TypeKey getTypeKey() override { return keybind::typeKey<T>(); }
 
     static SLValuePtr<T> create(std::string tag, T* value) {
         auto binding = SLValuePtr<T>::make(tag, value);

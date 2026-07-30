@@ -306,6 +306,11 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
                 std::max(1, static_cast<int>(std::floor(1.0 / dynamicDt)));
         }
     }
+
+    if (Renderer::get()->m_shouldQuit && PlayLayer::get()) {
+        PlayLayer::get()->onQuit();
+        Renderer::get()->m_shouldQuit = false;
+    }
 }
 
 void BotUpdater::breakLoop() {

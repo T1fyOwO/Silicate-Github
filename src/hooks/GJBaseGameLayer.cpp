@@ -291,10 +291,6 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
     }
 
     void addInputToReplay(PlayerButtonCommand cmd) {
-        if (cmd.m_isPlayer2 && !this->m_levelSettings->m_twoPlayerMode) {
-            cmd.m_isPlayer2 = false;
-        }
-
         auto bot = Bot::get();
         auto& replay = bot->replaySystem().m_actionAtom;
         if (replay.length() > 0 &&
@@ -712,6 +708,13 @@ static void shakeRandomOverride(SafetyHookContext& ctx) {
     ctx.rax = (uintptr_t)state;
 }
 
+static void teleportRandomOverride(SafetyHookContext& ctx) {
+    uint64_t& state = Bot::get()->replaySystem().m_teleportRandomState;
+    state = (int)((214013 * state + 2531011) >> 16) & 0x7FFF;
+
+    ctx.rax = (uintptr_t)state;
+}
+
 static void overrideCheckpointPlacement(SafetyHookContext& ctx) {
     ctx.rip += 5;
     PlayLayer::get()->queueCheckpoint();
@@ -726,6 +729,8 @@ $execute {
                   shakeRandomOverride);
     util::midhook(geode::base::get() + 0x23E1E9, "shakeRandomOverride",
                   shakeRandomOverride);
+    util::midhook(geode::base::get() + 0x20FED3, "teleportRandomOverride",
+                  teleportRandomOverride);
     util::midhook(geode::base::get() + 0x3A3657, "checkpointPlacement",
                   overrideCheckpointPlacement);
 

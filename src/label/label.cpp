@@ -7,6 +7,7 @@
 #include "bot/bot.hpp"
 #include "bot/updater.hpp"
 #include "ccTypes.h"
+#include "checkpoint/fix.hpp"
 #include "replay/system.hpp"
 
 using namespace geode::prelude;
@@ -25,6 +26,35 @@ using namespace geode::prelude;
                                player->m_##var);                            \
         }                                                                   \
     }
+
+static std::string getStringifiedOrbName(RingObject* ring) {
+    switch (ring->m_objectID) {
+        case 36:
+            return "Yellow";
+        case 84:
+            return "Blue";
+        case 141:
+            return "Pink";
+        case 1022:
+            return "Green";
+        case 1330:
+            return "Black";
+        case 1333:
+            return "Red";
+        case 1594:
+            return "Toggle";
+        case 1704:
+            return "Green Dash";
+        case 1751:
+            return "Pink Dash";
+        case 3004:
+            return "Spider";
+        case 3027:
+            return "Teleport";
+        default:
+            return "Unknown";
+    }
+}
 
 LabelManager::LabelManager() {
     addLabel("frame", "Tick",
@@ -97,6 +127,31 @@ LabelManager::LabelManager() {
              },
              {});
 
+    addLabel("checkpoints", "Checkpoint #",
+             [](Label&) {
+                 auto& pf = Bot::get()->practiceFix();
+
+                 return fmt::format("Checkpoint #: C - {} / B - {} / P - {}",
+                                    pf.m_savedCheckpoints.size(),
+                                    pf.m_storedFrames.size(),
+                                    pf.m_platformerCheckpoints.size());
+             },
+             {});
+
+    addLabel("level_time", "Level Time",
+             [](Label&) {
+                 return fmt::format("Level Time: {:.6f}s",
+                                    PlayLayer::get()->m_gameState.m_levelTime);
+             },
+             {});
+
+    addLabel("time_warp", "Time Warp",
+             [](Label&) {
+                 return fmt::format("Time Warp: {:.2f}x",
+                                    PlayLayer::get()->m_gameState.m_timeWarp);
+             },
+             {});
+
     addLabel("bot_state", "Bot State",
              [](Label&) {
                  return fmt::format("Bot State: {}", Bot::get()->isPlaying()
@@ -116,6 +171,13 @@ LabelManager::LabelManager() {
                  return fmt::format(
                      "Shake Random State: {}",
                      Bot::get()->replaySystem().getCurrentShakeState());
+             },
+             {});
+    addLabel("teleport_state", "Random Teleport State",
+             [](Label&) {
+                 return fmt::format(
+                     "Teleport Random State: {}",
+                     Bot::get()->replaySystem().m_teleportRandomState);
              },
              {});
     addLabel("action_index", "Action Index",
@@ -152,6 +214,48 @@ LabelManager::LabelManager() {
                              BotUpdater::LockDeltaMode::Accuracy
                          ? tfx - Bot::get()->updater().m_lastTfp
                          : Bot::get()->updater().getPhysicsDt());
+             },
+             {});
+
+    addLabel("touching_orbs", "Touching Orbs",
+             [](Label&) {
+                 // TODO: fix this. this makes way too many allocations
+                 PlayerObject* player = PlayLayer::get()->m_player1;
+                 CCArray* touchingRings = player->m_touchingRings;
+
+                 std::string ringText = "Touching Orbs: ";
+                 ringText.reserve(64);
+
+                 uint32_t count = touchingRings->count();
+
+                 std::vector<std::string> strings{};
+                 strings.reserve(16);
+
+                 for (uint32_t i = 0; i < count; i++) {
+                     RingObject* ring = static_cast<RingObject*>(
+                         touchingRings->objectAtIndex(i));
+
+                     if (!ring->hasBeenActivatedByPlayer(player)) {
+                         strings.push_back(getStringifiedOrbName(ring));
+
+                         if (ring->m_objectID == 1594) {
+                             strings.back() +=
+                                 fmt::format("({})", ring->m_targetGroupID);
+                         }
+
+                         if (ring->m_isMultiActivate) {
+                             strings.back() += "*";
+                         }
+                     }
+                 }
+
+                 if (strings.empty()) {
+                     ringText += "None";
+                 } else {
+                     ringText += geode::utils::string::join(strings, ", ");
+                 }
+
+                 return ringText;
              },
              {});
 

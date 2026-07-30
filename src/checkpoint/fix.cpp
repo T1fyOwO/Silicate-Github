@@ -6,6 +6,7 @@
 
 #include <Geode/Geode.hpp>
 #include <algorithm>
+#include <vector>
 
 #include "checkpoint/checkpoint.hpp"
 
@@ -21,6 +22,13 @@ using namespace geode::prelude;
 #include "bot/updater.hpp"
 #include "replay/system.hpp"
 
+// taken from https://stackoverflow.com/a/60971856
+template <std::ranges::range R>
+static constexpr auto to_vector(R&& r) {
+    using elem_t = std::decay_t<std::ranges::range_value_t<R>>;
+    return std::vector<elem_t>{r.begin(), r.end()};
+}
+
 SavedCheckpoint PracticeFix::createCheckpoint(CheckpointObject* obj,
                                               uint64_t attemptStartFrame) {
     if (auto pl = PlayLayer::get(); pl) {
@@ -33,6 +41,8 @@ SavedCheckpoint PracticeFix::createCheckpoint(CheckpointObject* obj,
             .m_frame = Bot::get()->updater().getFrame(),
             .m_seedState = Bot::get()->replaySystem().getCurrentRandomState(),
             .m_shakeRandomState = Bot::get()->replaySystem().m_shakeRandomState,
+            .m_teleportRandomState =
+                Bot::get()->replaySystem().m_teleportRandomState,
             .m_tps = Bot::get()->updater().m_tps->inner(),
             .m_timewarpTime = Bot::get()->updater().m_timewarpTime,
             .m_persistentItemMap =
@@ -41,6 +51,10 @@ SavedCheckpoint PracticeFix::createCheckpoint(CheckpointObject* obj,
             .m_calcNonEffectObjects = pl->m_calcNonEffectObjects,
             .m_calcNonEffectObjectsSize = pl->m_calcNonEffectObjectsSize,
             .m_brokenObjects = this->m_brokenObjects,
+            .m_advRandStates = to_vector(
+                m_advancedRandom | std::views::transform([](SavedAdvRand& s) {
+                    return *s.m_randomState;
+                })),
         };
 
         return checkpoint;
@@ -86,6 +100,7 @@ void PracticeFix::applyCheckpoint(SavedCheckpoint& cp) {
         updater.setFrame(cp.m_frame - cp.m_attemptStartFrame);
         bot->replaySystem().getCurrentRandomState() = cp.m_seedState;
         bot->replaySystem().m_shakeRandomState = cp.m_shakeRandomState;
+        bot->replaySystem().m_teleportRandomState = cp.m_teleportRandomState;
         if (cp.m_tps != bot->updater().m_tps->inner()) {
             bot->updater().m_tps->inner() = cp.m_tps;
             bot->updater().m_tps->notifyChange();
@@ -98,6 +113,11 @@ void PracticeFix::applyCheckpoint(SavedCheckpoint& cp) {
                 obj->m_isDisabled2 = true;
                 obj->setOpacity(0.0f);
             }
+        }
+
+        for (auto const [i, state] :
+             cp.m_advRandStates | std::views::enumerate) {
+            *this->m_advancedRandom[i].m_randomState = state;
         }
     }
 }
@@ -176,8 +196,16 @@ void PracticeFix::applyLatest() {
     applyCheckpoint(checkpoint);
 }
 
+void PracticeFix::reseedAdvancedRandom(uint64_t attemptSeed) {
+    for (auto& s : m_advancedRandom) {
+        *s.m_randomState =
+            attemptSeed ^ (static_cast<uint64_t>(s.m_uniqueID) * 2137);
+    }
+}
+
 void PracticeFix::removeAll() {
     m_brokenObjects.clear();
+    m_advancedRandom.clear();
     m_savedCheckpoints.clear();
 }
 
@@ -213,17 +241,18 @@ void PracticeFix::updatePlatformerInputs(
 [[maybe_unused]] static std::optional<slc::Action> findLastInputUnused(
     const std::vector<slc::Action>& inputs, uint32_t frame, PlayerButton btn,
     bool p2) {
-    const auto& last = std::find_if(
-        inputs.rbegin(), inputs.rend(),
-        [frame, btn, p2](const slc::Action& input) {
-            if (input.m_frame < frame &&
-                static_cast<int>(input.m_type) == static_cast<int>(btn) &&
-                input.m_player2 == p2) {
-                return true;
-            }
+    const auto& last =
+        std::find_if(inputs.rbegin(), inputs.rend(),
+                     [frame, btn, p2](const slc::Action& input) {
+                         if (input.m_frame < frame &&
+                             static_cast<int>(input.m_type) ==
+                                 static_cast<int>(btn) &&
+                             input.m_player2 == p2) {
+                             return true;
+                         }
 
-            return false;
-        });
+                         return false;
+                     });
 
     if (last == inputs.rend()) {
         return std::nullopt;

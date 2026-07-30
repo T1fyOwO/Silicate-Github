@@ -36,14 +36,10 @@ struct SLLevelEditorLayer : Modify<SLLevelEditorLayer, LevelEditorLayer> {
 
         m_queuedButtons.clear();
 
-        if (bot->isPlaying()) {
-            m_player1->releaseAllButtons();
-            m_player2->releaseAllButtons();
+        m_player1->releaseAllButtons();
+        m_player2->releaseAllButtons();
 
-            this->processQueuedButtons(0.0, true);
-
-            return;
-        }
+        this->processQueuedButtons(0.0, true);
 
         bot->updater().m_canDie->inner() = false;
         bot->updater().m_inputIsDeath = false;

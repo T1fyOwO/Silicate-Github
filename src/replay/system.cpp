@@ -18,6 +18,9 @@ void ReplaySystem::onReset(uint32_t newFrame) {
         m_actionAtom.clipActions(newFrame);
 
         m_inputIndex = m_actionAtom.length();
+
+        m_teleportRandomState = m_teleportRandomState * 214013 + 2531011;
+        m_shakeRandomState = m_shakeRandomState * 214013 + 2531011;
     } else {
         if (m_actionAtom.m_actions.empty()) {
             m_inputIndex = 0;
@@ -213,6 +216,7 @@ void ReplaySystem::createBackup() {
     this->save(path, true);
 }
 
+// this comment is just here so two $execute calls on line 219 don't conflict
 $execute {
     auto bot = Bot::get();
     auto& rs = bot->replaySystem();

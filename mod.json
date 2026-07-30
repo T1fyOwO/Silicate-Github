@@ -1,5 +1,5 @@
 {
-  "geode": "5.7.1",
+  "geode": "5.8.2",
   "gd": {
     "win": "2.2081"
   },
@@ -30,16 +30,22 @@
       "resources/title_trans_new.png",
       "resources/title_jolly_new.png"
     ],
-    "sprites": [
-      "resources/silicate-button.png"
-    ]
+    "sprites": ["resources/silicate-button.png"]
   },
   "incompatibilities": {
     "zilko.xdbot": "2.4.0",
     "chagh.tcbot": "0.1.0",
     "fig.zbot": "3.0.0-beta.10",
     "kepe.ybot": "0.1.0",
-    "sabe.platformersaves": "1.1.2"
+    "astralteam.astral": "0.1.0",
+
+    "sabe.platformersaves": "1.1.2",
+    "chizz.subtick-inputs-api": "0.6.0",
+    "chizz.superb-input-precision": "0.1.4",
+    "hiimjasmine00.checkpoint-switcher": "1.0.1",
+    "viper.restart_from_any_checkpoint": "1.0.0",
+    "kevadroz.practicecheckpointpermanence": "1.4.3",
+    "blueblock6.transparent_checkpoints": "1.0.7"
   },
   "dependencies": {
     "geode.node-ids": ">=1.22.0"

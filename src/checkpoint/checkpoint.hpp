@@ -272,6 +272,7 @@ struct SavedCheckpoint {
     uint64_t m_frame;
     uint64_t m_seedState;
     uint64_t m_shakeRandomState;
+    uint64_t m_teleportRandomState;
 
     double m_tps;
     double m_timewarpTime;
@@ -284,6 +285,7 @@ struct SavedCheckpoint {
     int m_calcNonEffectObjectsSize;
 
     std::vector<GameObject*> m_brokenObjects;
+    std::vector<uint64_t> m_advRandStates;
 };
 
 #endif  // CHECKPOINT_HPP

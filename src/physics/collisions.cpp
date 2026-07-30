@@ -59,7 +59,7 @@ int checkPlayerCollisions(GJBaseGameLayer* gameLayer, PlayerObject* player) {
     float angleTransformed = (unkAngleHalved + 90.0) - someValue;
 
     bool groundExists =
-        !gameLayer->m_gameState.m_unkBool8 &&
+        !gameLayer->m_gameState.m_isFreeMode &&
         (player->m_isShip || player->m_isBird || player->m_isDart ||
          player->m_isSwing || player->m_isBall || player->m_isSpider ||
          gameLayer->m_gameState.m_isDualMode);

@@ -26,6 +26,8 @@ class SLSettings {
     bool autosaveAtInterval = true;
     double autosaveInterval = 180.0;
 
+    bool autoExitLevel = false;
+
     bool rainbowMode = true;
 
     double tps = 240.0;

@@ -188,7 +188,6 @@ static void resizeShaderLayer(CCSize size, CCSize original) {
     CCDirector::get()->setContentScaleFactor(csf);
     sh->m_sprite->setTexture(sh->m_renderTexture->getSprite()->getTexture());
     sh->m_textureContentSize = sh->m_sprite->getTexture()->getContentSize();
-    geode::log::info("Texture content size: {}", sh->m_textureContentSize);
     sh->m_targetTextureSize = size;
     sh->m_targetTextureSizeExtra = CCSize(0.0f, 0.0f);
     if (baseAspectRatio > sh->m_aspectRatio) {
@@ -202,15 +201,11 @@ static void resizeShaderLayer(CCSize size, CCSize original) {
         sh->m_targetTextureSizeExtra =
             cocos2d::CCSize{0.0, calculatedHeight - size.height};
     }
-    geode::log::info("extra={}", sh->m_targetTextureSizeExtra);
     sh->m_sprite->setTextureRect({-1.0f + sh->m_targetTextureSizeExtra.width,
                                   -1.0f + sh->m_targetTextureSizeExtra.height,
                                   size.width + 2.0f, size.height + 2.0f});
     sh->m_state.m_textureScaleX = size.width / winSize.width;
     sh->m_state.m_textureScaleY = size.height / winSize.height;
-    geode::log::info("State texture scale: {}", sh->m_scaleFactor);
-    geode::log::info("m_state.m_textureScaleX={}", sh->m_state.m_textureScaleX);
-    geode::log::info("m_state.m_textureScaleY={}", sh->m_state.m_textureScaleY);
 }
 
 geode::Result<> Renderer::start() {
@@ -362,15 +357,17 @@ geode::Result<> Renderer::start() {
 
     AVDictionary* video_opts = nullptr;
     if (m_settings.m_codec == "hevc_nvenc") {
+        geode::log::info("Detected hevc_nvenc codec - forcing b_ref_mode to 0");
         ff->av_dict_set(&video_opts, "b_ref_mode", "0", 0);
     }
 
     if (m_settings.m_codec == "hevc_qsv" || m_settings.m_codec == "h264_qsv") {
+        geode::log::info("Detected qsv codec - forcing async_depth to 1");
         ff->av_dict_set(&video_opts, "async_depth", "1", 0);
     }
 
     for (const auto& arg : args) {
-        geode::log::info("Applying args {}: {}", arg.m_name, arg.m_value);
+        geode::log::info("Applying args {}: `{}`", arg.m_name, arg.m_value);
         ff->av_dict_set(&video_opts, arg.m_name.c_str(), arg.m_value.c_str(),
                         0);
     }
@@ -582,7 +579,10 @@ geode::Result<> Renderer::write() {
                                  m_videoStream->time_base);
         m_pkt->stream_index = m_videoStream->index;
 
-        ret = ff->av_interleaved_write_frame(m_formatCtx, m_pkt.get());
+        {
+            std::lock_guard<std::mutex> lock(m_muxMutex);
+            ret = ff->av_interleaved_write_frame(m_formatCtx, m_pkt.get());
+        }
         if (ret < 0) {
             return geode::Err("Failed to write frame");
         }
@@ -647,7 +647,10 @@ geode::Result<> Renderer::writeAudio(std::vector<float>& data, uint64_t pts) {
                                  m_audioStream->time_base);
         m_audioPkt->stream_index = m_audioStream->index;
 
-        ret = ff->av_interleaved_write_frame(m_formatCtx, m_audioPkt.get());
+        {
+            std::lock_guard<std::mutex> lock(m_muxMutex);
+            ret = ff->av_interleaved_write_frame(m_formatCtx, m_audioPkt.get());
+        }
         if (ret < 0) {
             return geode::Err("Failed to write frame");
         }
@@ -672,7 +675,11 @@ geode::Result<> Renderer::stop() {
                                      m_videoStream->time_base);
             m_pkt->stream_index = m_videoStream->index;
 
-            int ret = ff->av_interleaved_write_frame(m_formatCtx, m_pkt.get());
+            int ret;
+            {
+                std::lock_guard<std::mutex> lock(m_muxMutex);
+                ret = ff->av_interleaved_write_frame(m_formatCtx, m_pkt.get());
+            }
             if (ret < 0) {
                 return geode::Err("Failed to write frame");
             }
@@ -690,8 +697,12 @@ geode::Result<> Renderer::stop() {
                                      m_audioStream->time_base);
             m_audioPkt->stream_index = m_audioStream->index;
 
-            int ret =
-                ff->av_interleaved_write_frame(m_formatCtx, m_audioPkt.get());
+            int ret;
+            {
+                std::lock_guard<std::mutex> lock(m_muxMutex);
+                ret = ff->av_interleaved_write_frame(m_formatCtx,
+                                                     m_audioPkt.get());
+            }
             if (ret < 0) {
                 return geode::Err("Failed to write frame");
             }
@@ -700,7 +711,11 @@ geode::Result<> Renderer::stop() {
         }
     }
 
-    int ret = ff->av_write_trailer(m_formatCtx);
+    int ret;
+    {
+        std::lock_guard<std::mutex> lock(m_muxMutex);
+        ret = ff->av_write_trailer(m_formatCtx);
+    }
     if (ret < 0) {
         return geode::Err("Failed to write trailer");
     }
@@ -723,10 +738,18 @@ geode::Result<> Renderer::stop() {
 
     m_texture.destroy();
 
+    if (m_autoExitLevel->inner()) {
+        m_shouldQuit = true;
+    }
+
+    geode::log::info("Renderer cleanup done");
+
     return geode::Ok();
 }
 
 void Renderer::recordLoop() {
+    geode::log::info("Started encode thread");
+
     while (true) {
         QueuedFrame frame;
         {
@@ -841,16 +864,21 @@ void Renderer::update(PlayLayer* pl) {
         }
     }
 
-    double fadeOut =
-        m_settings.m_fadeOutTime == 0
-            ? 1
-            : std::min(((this->m_settings.m_afterEndTime - this->m_endTime) /
-                        m_settings.m_fadeOutTime),
-                       1.0);
+    double fadeOut = 1.0;
+    if (pl->m_hasCompletedLevel && moreLevel) {
+        fadeOut =
+            m_settings.m_fadeOutTime == 0
+                ? 1
+                : std::clamp(
+                      ((this->m_settings.m_afterEndTime - this->m_endTime) /
+                       m_settings.m_fadeOutTime),
+                      0.0, 1.0);
+    }
 
-    double fadeIn = m_settings.m_fadeInTime == 0
-                        ? 1
-                        : std::min(m_time / m_settings.m_fadeInTime, 1.0);
+    double fadeIn =
+        m_settings.m_fadeInTime == 0
+            ? 1
+            : std::clamp(m_time / m_settings.m_fadeInTime, 0.0, 1.0);
 
     m_fadeThreshold = std::min(fadeIn, fadeOut);
 

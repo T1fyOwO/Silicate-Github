@@ -1,8 +1,15 @@
 #pragma once
 
+#include <cctype>
+#include <charconv>
+#include <cmath>
 #include <glaze/glaze.hpp>
+#include <limits>
 #include <memory>
 #include <sstream>
+#include <string>
+#include <string_view>
+#include <type_traits>
 
 enum class KeybindType { Hold = 0, Toggle, Override };
 
@@ -32,6 +39,48 @@ struct glz::meta<RawKeybind> {
 // clang-format on
 
 namespace keybind {
+
+// A keybind writes through a void* as T&, so it has to agree with the value it
+// was looked up for. Comparing these gives that check without needing RTTI.
+using TypeKey = const void*;
+
+template <typename T>
+inline TypeKey typeKey() {
+    static const char id{};
+    return &id;
+}
+
+inline std::string_view trimSpace(std::string_view str) {
+    while (!str.empty() &&
+           std::isspace(static_cast<unsigned char>(str.front()))) {
+        str.remove_prefix(1);
+    }
+
+    while (!str.empty() &&
+           std::isspace(static_cast<unsigned char>(str.back()))) {
+        str.remove_suffix(1);
+    }
+
+    return str;
+}
+
+/**
+ * Strict numeric parse - the whole string has to be a number, so trailing junk
+ * reads as the typo it is instead of silently becoming a value.
+ *
+ * Works for both integral and floating point Ts.
+ */
+template <typename T>
+inline bool parseNumber(std::string_view str, T& out) {
+    str = trimSpace(str);
+    if (!str.empty() && str.front() == '+') str.remove_prefix(1);
+    if (str.empty()) return false;
+
+    const char* end = str.data() + str.size();
+    auto [ptr, ec] = std::from_chars(str.data(), end, out);
+
+    return ec == std::errc{} && ptr == end;
+}
 
 enum Modifier : int {
     Shift = 0b100,
@@ -134,11 +183,18 @@ class KeybindControl {
 
     HashT getHash() { return keybind::makeHash(m_key, m_modifiers); }
     const std::string& getTag() { return m_valueTag; }
+    KeybindType getType() const { return m_type; }
+    bool isActive() const { return m_active; }
     std::string getKeyLabel() { return keybind::keyLabel(m_key, m_modifiers); }
+
+    // identifies the T this control casts `value`/`previous` to
+    virtual keybind::TypeKey getTypeKey() const = 0;
 
     virtual void applyValue(bool pressed, void* value, void* previous) = 0;
     virtual void fromString(const std::string& str) = 0;
     const virtual std::string toString() = 0;
+
+    virtual bool canParse(const std::string& str) = 0;
 
     virtual ~KeybindControl() = default;
 
@@ -197,6 +253,10 @@ class SLKeybind : public KeybindControl {
                                               Self::readFromString(value), tag);
     }
 
+    keybind::TypeKey getTypeKey() const override {
+        return keybind::typeKey<T>();
+    }
+
     void applyValue(bool pressed, void* value, void* previous) override {
         if (!m_active) return;
 
@@ -237,19 +297,80 @@ class SLKeybind : public KeybindControl {
         }
     }
 
+    /**
+     * Every value is typed into the same text box, and the type behind a tag
+     * isn't obvious from the UI, so any number has to parse into any numeric T:
+     * "2" for a double, "2.0" or "1e3" for an int. Anything that doesn't fit T
+     * is rejected rather than truncated to something the user didn't ask for.
+     */
+    static bool parse(const std::string& str, T& out) {
+        if constexpr (std::is_same_v<T, std::string>) {
+            out = str;
+            return true;
+        } else if constexpr (std::is_same_v<T, bool>) {
+            // bools are written as 1/0, but accept any number and true/false
+            double number = 0.0;
+            if (keybind::parseNumber(str, number)) {
+                out = number != 0.0;
+                return true;
+            }
+
+            std::istringstream alpha(str);
+            return static_cast<bool>(alpha >> std::boolalpha >> out);
+        } else if constexpr (std::is_arithmetic_v<T>) {
+            // exact for integers too large to survive a double
+            if constexpr (std::is_integral_v<T>) {
+                if (keybind::parseNumber(str, out)) return true;
+            }
+
+            double number = 0.0;
+            if (!keybind::parseNumber(str, number)) return false;
+
+            if constexpr (std::is_integral_v<T>) {
+                if (!std::isfinite(number)) return false;
+                number = std::trunc(number);
+            }
+
+            if (std::isfinite(number) &&
+                (number < static_cast<double>(std::numeric_limits<T>::lowest()) ||
+                 number > static_cast<double>(std::numeric_limits<T>::max()))) {
+                return false;
+            }
+
+            out = static_cast<T>(number);
+            return true;
+        } else {
+            std::istringstream iss(str);
+            return static_cast<bool>(iss >> out);
+        }
+    }
+
     static T readFromString(const std::string& str) {
-        std::istringstream iss(str);
-        T value;
-        iss >> value;
+        T value{};
+        (void)Self::parse(str, value);
         return value;
     }
 
+    // keeps the current value if the string can't be parsed
     void fromString(const std::string& str) override {
-        std::istringstream iss(str);
-        iss >> m_value;
+        T value{};
+        if (Self::parse(str, value)) m_value = value;
+    }
+
+    bool canParse(const std::string& str) override {
+        T value{};
+        return Self::parse(str, value);
     }
 
     const std::string toString() override {
+        // the stream would round to 6 significant digits, so editing an
+        // unrelated field of a float keybind would quietly change its value
+        if constexpr (std::is_floating_point_v<T>) {
+            char buf[64];
+            auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), m_value);
+            if (ec == std::errc{}) return std::string(buf, ptr);
+        }
+
         std::ostringstream oss;
         oss << m_value;
         return oss.str();

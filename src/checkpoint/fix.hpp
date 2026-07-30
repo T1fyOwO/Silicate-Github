@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "Geode/binding/CheckpointGameObject.hpp"
+#include "Geode/utils/function.hpp"
 #include "checkpoint.hpp"
 #include "settings/settings.hpp"
 #include "shared/value/value.hpp"
@@ -19,6 +20,11 @@
 class PracticeFix {
    private:
    public:
+    struct SavedAdvRand {
+        uint64_t* m_randomState;
+        int m_uniqueID;
+    };
+
     SLValuePtr<uint32_t> m_maxStoredFrames = SLValue<uint32_t>::create(
         "practice_fix.max_stored_frames", &SLSettings::get()->stepsToSave);
 
@@ -32,6 +38,8 @@ class PracticeFix {
     std::vector<SavedCheckpoint> m_savedCheckpoints;
     std::deque<std::pair<CheckpointObject*, CheckpointGameObject*>>
         m_platformerCheckpoints;
+
+    std::vector<SavedAdvRand> m_advancedRandom;
 
     // CheckpointObject* m_platformerCheckpoint = nullptr;
     // CheckpointGameObject* m_platformerCheckpointGame = nullptr;
@@ -54,6 +62,8 @@ class PracticeFix {
     void popLatest();
     void removeAll();
     void clearPlatformer(bool assumeLoaded = false);
+
+    void reseedAdvancedRandom(uint64_t attemptSeed);
 
     void updatePlatformerInputs(std::vector<PlayerButtonCommand>& inputs);
     void registerBrokenObject(GameObject* obj) {

@@ -110,47 +110,67 @@ void HitboxTrailUnit::drawCircle(cocos2d::CCDrawNode* node, float width,
     }
 }
 
+static void syncToObjectLayer(cocos2d::CCNode* node, cocos2d::CCNode* layer) {
+    if (!node || !layer) return;
+
+    node->setPosition(layer->getPosition());
+    node->setScaleX(layer->getScaleX());
+    node->setScaleY(layer->getScaleY());
+    node->setRotationX(layer->getRotationX());
+    node->setRotationY(layer->getRotationY());
+    node->setSkewX(layer->getSkewX());
+    node->setSkewY(layer->getSkewY());
+    node->setContentSize(layer->getContentSize());
+    node->setAnchorPoint(layer->getAnchorPoint());
+    node->ignoreAnchorPointForPosition(layer->isIgnoreAnchorPointForPosition());
+}
+
 void Hitboxes::init(GJBaseGameLayer* pl) {
     if (m_initialized) {
         this->destroy();  // probably worth it to just recreate
     }
 
-    m_drawNode = HitboxesDrawNode::create();
-    m_drawNode->retain();
-    m_drawNode->setID("hitbox-node"_spr);
-    m_drawNode->setBlendFunc({GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA});
+    if (!pl || !pl->m_objectLayer) return;
 
-    m_solidTrailDrawNode = HitboxesDrawNode::create();
-    m_solidTrailDrawNode->retain();
-    m_solidTrailDrawNode->setID("hitbox-trail-node-solid"_spr);
-    m_solidTrailDrawNode->setBlendFunc({GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA});
+    m_container = cocos2d::CCNode::create();
+    m_container->retain();
+    m_container->setID("hitbox-layer"_spr);
+    syncToObjectLayer(m_container, pl->m_objectLayer);
 
-    m_circleTrailDrawNode = HitboxesDrawNode::create();
-    m_circleTrailDrawNode->retain();
-    m_circleTrailDrawNode->setID("hitbox-trail-node-circle"_spr);
-    m_circleTrailDrawNode->setBlendFunc({GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA});
+    auto addDrawNode = [this](std::string const& id,
+                              int zOrder) -> HitboxesDrawNode* {
+        auto node = HitboxesDrawNode::create();
+        if (!node) return nullptr;
 
-    m_innerTrailDrawNode = HitboxesDrawNode::create();
-    m_innerTrailDrawNode->retain();
-    m_innerTrailDrawNode->setID("hitbox-trail-node-inner"_spr);
-    m_innerTrailDrawNode->setBlendFunc({GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA});
+        node->setID(id);
+        node->setBlendFunc({GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA});
+        m_container->addChild(node, zOrder);
 
-    m_rotatedTrailDrawNode = HitboxesDrawNode::create();
-    m_rotatedTrailDrawNode->retain();
-    m_rotatedTrailDrawNode->setID("hitbox-trail-node-rotated"_spr);
-    m_rotatedTrailDrawNode->setBlendFunc(
-        {GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA});
+        return node;
+    };
 
-    pl->m_debugDrawNode->getParent()->addChild(
-        m_drawNode, pl->m_uiLayer->getZOrder() + 10000);
-    pl->m_debugDrawNode->getParent()->addChild(
-        m_solidTrailDrawNode, pl->m_uiLayer->getZOrder() + 9998);
-    pl->m_debugDrawNode->getParent()->addChild(
-        m_rotatedTrailDrawNode, pl->m_uiLayer->getZOrder() + 9996);
-    pl->m_debugDrawNode->getParent()->addChild(
-        m_innerTrailDrawNode, pl->m_uiLayer->getZOrder() + 9999);
-    pl->m_debugDrawNode->getParent()->addChild(
-        m_circleTrailDrawNode, pl->m_uiLayer->getZOrder() + 9997);
+    m_drawNode = addDrawNode("hitbox-node"_spr, 4);
+    m_innerTrailDrawNode = addDrawNode("hitbox-trail-node-inner"_spr, 3);
+    m_solidTrailDrawNode = addDrawNode("hitbox-trail-node-solid"_spr, 2);
+    m_circleTrailDrawNode = addDrawNode("hitbox-trail-node-circle"_spr, 1);
+    m_rotatedTrailDrawNode = addDrawNode("hitbox-trail-node-rotated"_spr, 0);
+
+    if (!m_drawNode || !m_innerTrailDrawNode || !m_solidTrailDrawNode ||
+        !m_circleTrailDrawNode || !m_rotatedTrailDrawNode) {
+        CC_SAFE_RELEASE_NULL(m_container);
+        m_drawNode = nullptr;
+        m_innerTrailDrawNode = nullptr;
+        m_solidTrailDrawNode = nullptr;
+        m_circleTrailDrawNode = nullptr;
+        m_rotatedTrailDrawNode = nullptr;
+        return;
+    }
+
+    // m_uiLayer is added to the game layer at z order 101, so this keeps the
+    // hitboxes above every gameplay layer
+    const int zOrder =
+        (pl->m_uiLayer ? pl->m_uiLayer->getZOrder() : 101) + 10000;
+    pl->addChild(m_container, zOrder);
 
     m_initialized = true;
 }
@@ -379,16 +399,20 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
 
     if (!m_enabled->inner()) return;
 
+    syncToObjectLayer(m_container, pl->m_objectLayer);
+
     if (m_trailEnabled->inner()) {
-        float scale = pl->m_objectLayer->getScale();
+        float scaleX = pl->m_objectLayer->getScaleX();
+        float scaleY = pl->m_objectLayer->getScaleY();
         float minX =
-            -pl->m_objectLayer->getPositionX() / scale - pl->m_cameraWidth;
+            -pl->m_objectLayer->getPositionX() / scaleX - pl->m_cameraWidth;
         float maxX =
-            -pl->m_objectLayer->getPositionX() / scale + pl->m_cameraWidth;
+            -pl->m_objectLayer->getPositionX() / scaleX + pl->m_cameraWidth;
         float minY =
-            -pl->m_objectLayer->getPositionY() / scale - pl->m_cameraHeight;
+            -pl->m_objectLayer->getPositionY() / scaleY - pl->m_cameraHeight;
         float maxY =
-            -pl->m_objectLayer->getPositionY() / scale + pl->m_cameraHeight;
+            -pl->m_objectLayer->getPositionY() / scaleY + pl->m_cameraHeight;
+
         // auto rect = cocos2d::CCRect(
         //     minX, minY,
         //     maxX - minX, maxY - minY
@@ -436,9 +460,9 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
                 // without overdrawing identical positions.
                 const float SUBPIXEL_FACTOR = 3;
                 const int px = static_cast<int>(std::floor(
-                    (unit.m_rect.getMidX() * scale + objX) * SUBPIXEL_FACTOR));
+                    (unit.m_rect.getMidX() * scaleX + objX) * SUBPIXEL_FACTOR));
                 const int py = static_cast<int>(std::floor(
-                    (unit.m_rect.getMidY() * scale + objY) * SUBPIXEL_FACTOR));
+                    (unit.m_rect.getMidY() * scaleY + objY) * SUBPIXEL_FACTOR));
                 if (hasLast && px == lastPx && py == lastPy) continue;
                 hasLast = true;
                 lastPx = px;
@@ -528,6 +552,17 @@ void Hitboxes::clearTrail() {
 void Hitboxes::destroy() {
     if (!m_initialized) return;
 
-    CC_SAFE_RELEASE(m_drawNode);
+    if (m_container) {
+        m_container->removeFromParent();
+        CC_SAFE_RELEASE_NULL(m_container);
+    }
+
+    // Owned by the container, so they're already gone at this point
+    m_drawNode = nullptr;
+    m_innerTrailDrawNode = nullptr;
+    m_solidTrailDrawNode = nullptr;
+    m_circleTrailDrawNode = nullptr;
+    m_rotatedTrailDrawNode = nullptr;
+
     m_initialized = false;
 }

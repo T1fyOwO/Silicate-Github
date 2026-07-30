@@ -32,7 +32,10 @@ void CPSCounter::clearActions() {
 }
 
 void CPSCounter::pushAction(bool player2) {
-    double time = GJBaseGameLayer::get()->m_gameState.m_levelTime;
+    auto* gjbgl = GJBaseGameLayer::get();
+    if (!gjbgl) return;
+
+    double time = gjbgl->m_gameState.m_levelTime;
 
     if (player2) {
         m_timestampsP2.push(time);
@@ -47,7 +50,10 @@ void CPSCounter::pushAction(bool player2) {
 void CPSCounter::update() {
     if (m_timestampsP1.empty() && m_timestampsP2.empty()) return;
 
-    double time = GJBaseGameLayer::get()->m_gameState.m_levelTime;
+    auto* gjbgl = GJBaseGameLayer::get();
+    if (!gjbgl) return;
+
+    double time = gjbgl->m_gameState.m_levelTime;
 
     while (!m_timestampsP1.empty() && time - m_timestampsP1.front() > 1.0) {
         m_timestampsP1.pop();

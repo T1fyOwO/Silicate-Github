@@ -829,9 +829,11 @@ void UIManager::draw() {
                 tabby::checkbox("Intentional Death",
                                 Bot::get()->updater().m_canDie->inner());
 
-                tabby::checkbox(
-                    "Frame Extrapolation",
-                    Bot::get()->updater().m_extrapolateFrames->inner());
+                if (m_state.m_showExperimentalFeatures) {
+                    tabby::checkbox(
+                        "Frame Extrapolation",
+                        Bot::get()->updater().m_extrapolateFrames->inner());
+                }
 
                 tabby::divider();
 
@@ -1300,6 +1302,8 @@ void UIManager::draw() {
 
                 auto ar = AudioRecorder::get();
                 tabby::checkbox("Audio Preview", ar->m_audioPreview->inner());
+                tabby::checkbox("Auto Exit on Finish",
+                                renderer->m_autoExitLevel->inner());
 
                 tabby::divider();
 
@@ -1434,35 +1438,55 @@ void UIManager::draw() {
 
                 tabby::text("Keybinds", m_bold);
 
+                tabby::divider(false);
+
+                m_state.m_keybindEditGeneration++;
+
                 int row = 0;
                 for (auto& kb : kbs | std::views::values | std::views::join) {
+                    if (!kb) continue;
+
                     int id = row++;
+
+                    auto& edit = m_state.m_keybindEdits[kb.get()];
+                    edit.seen = m_state.m_keybindEditGeneration;
+
+                    // don't fight the user while they're typing
+                    if (m_state.m_editedKeybindTag != kb.get()) {
+                        edit.tag = kb->getTag();
+                    }
+
+                    // tints the field; the text as of last frame, since the
+                    // edit happens while the widget draws
+                    bool tagValid = b->hasValue(edit.tag);
+                    tabby::WidgetState tagState;
+                    bool tagCommitted = false;
+
+                    if (!tagValid) {
+                        ImGui::PushStyleColor(ImGuiCol_Text,
+                                              ImVec4(1.0, 0.5, 0.5, 1.0));
+                    }
+
+                    tagState = tabby::input_text(
+                        fmt::format("Tag##tagkb{}", id), "Tag", edit.tag);
+
+                    // has to be asked before anything else is drawn
+                    tagCommitted = ImGui::IsItemDeactivatedAfterEdit();
+
+                    if (!tagValid) {
+                        ImGui::PopStyleColor();
+                    }
+
                     tabby::fraction(
                         2.0,
                         [&]() {
-                            // magic positioning hack
-                            // so that *empty* label doesn't get rendered
-                            //
-                            // this is why i'm rewriting the bot
-                            float dst =
-                                ImGui::GetCursorPosX() +
-                                tabby::TabbyGlobalCfg::get().widgetWidth;
-                            float width =
-                                tabby::TabbyGlobalCfg::get().widgetWidth;
+                            tabby::text("Bind");
 
-                            tabby::TabbyGlobalCfg::get().widgetWidth =
-                                width * 2;
+                            tabby::same_line();
 
-                            ImGui::SetCursorPosX(ImGui::GetCursorPosX() -
-                                                 width);
-
-                            tabby::input_text(fmt::format("##tagkb{}", id),
-                                              "Tag", kb->m_valueTag);
-
-                            ImGui::SetCursorPosX(dst);
-                            tabby::TabbyGlobalCfg::get().widgetWidth = width;
-
-                            tabby::spacer(8.0);
+                            ImGui::SetCursorPosX(
+                                tabby::TabbyGlobalCfg::get().widgetWidth +
+                                16.0);
 
                             bool isEditing = b->isEditing(kb.get());
                             std::string buttonText =
@@ -1478,15 +1502,101 @@ void UIManager::draw() {
                                     b->startEdit(kb.get());
                                 }
                             }
-
-                            // tabby::spacer(8.0);
-
-                            // tabby::input_text(
-                            //     fmt::format("##inputkb{}{}", kb->getHash(),
-                            //                 kb->getTag()),
-                            //     "Value", kb->);
                         },
                         16.0);
+
+                    if (tagState.held) {
+                        m_state.m_editedKeybindTag = kb.get();
+                    } else if (m_state.m_editedKeybindTag == kb.get()) {
+                        m_state.m_editedKeybindTag = nullptr;
+                    }
+
+                    if (tagCommitted && b->hasValue(edit.tag)) {
+                        m_state.m_pendingRetag = kb.get();
+                        m_state.m_pendingRetagTag = edit.tag;
+                    }
+
+                    // don't fight the user while they're typing
+                    if (m_state.m_editedKeybindValue != kb.get()) {
+                        edit.value = kb->toString();
+                    }
+
+                    bool valid = kb->canParse(edit.value);
+                    if (!valid) {
+                        ImGui::PushStyleColor(ImGuiCol_Text,
+                                              ImVec4(1.0, 0.5, 0.5, 1.0));
+                    }
+
+                    auto valueState =
+                        tabby::input_text(fmt::format("Value##valuekb{}", id),
+                                          "Value", edit.value);
+
+                    if (!valid) {
+                        ImGui::PopStyleColor();
+                    }
+
+                    if (valueState.held) {
+                        m_state.m_editedKeybindValue = kb.get();
+                    } else if (m_state.m_editedKeybindValue == kb.get()) {
+                        m_state.m_editedKeybindValue = nullptr;
+                    }
+
+                    if (valueState.changed) {
+                        kb->fromString(edit.value);
+                    }
+
+                    tabby::divider();
+                }
+
+                if (m_state.m_pendingRetag != nullptr) {
+                    if (b->retagKeybind(m_state.m_pendingRetag,
+                                        m_state.m_pendingRetagTag)) {
+                        m_state.m_keybindEdits.erase(m_state.m_pendingRetag);
+
+                        if (m_state.m_editedKeybindTag ==
+                            m_state.m_pendingRetag) {
+                            m_state.m_editedKeybindTag = nullptr;
+                        }
+
+                        if (m_state.m_editedKeybindValue ==
+                            m_state.m_pendingRetag) {
+                            m_state.m_editedKeybindValue = nullptr;
+                        }
+                    }
+
+                    m_state.m_pendingRetag = nullptr;
+                    m_state.m_pendingRetagTag.clear();
+                }
+
+                std::erase_if(m_state.m_keybindEdits, [this](const auto& item) {
+                    if (item.second.seen == m_state.m_keybindEditGeneration) {
+                        return false;
+                    }
+
+                    if (m_state.m_editedKeybindTag == item.first) {
+                        m_state.m_editedKeybindTag = nullptr;
+                    }
+
+                    if (m_state.m_editedKeybindValue == item.first) {
+                        m_state.m_editedKeybindValue = nullptr;
+                    }
+
+                    return true;
+                });
+
+                if (tabby::button("Add Keybind").pressed) {
+                    RawKeybind k{
+                        .m_key = 0,
+                        .m_modifiers = 0,
+                        .m_valueTag = "updater.frame_advance",
+                        .m_type = KeybindType::Toggle,
+                        .m_active = true,
+                        .m_value = "1",
+                    };
+
+                    if (auto kb = b->makeKeybind(k)) {
+                        b->registerKeybind(kb);
+                    }
                 }
             });
 

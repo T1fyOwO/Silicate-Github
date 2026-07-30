@@ -34,6 +34,7 @@ add_library(${PROJECT_NAME} SHARED
     src/hooks/PauseLayer.cpp
     src/hooks/PlayLayer.cpp
     src/hooks/PlayerObject.cpp
+    src/hooks/RandTriggerGameObject.cpp
     src/hooks/ShaderLayer.cpp
     src/hooks/VideoOptionsLayer.cpp
 
@@ -90,7 +91,7 @@ target_link_libraries(${PROJECT_NAME} glaze::glaze)
 CPMAddPackage("gh:zyantific/zydis#bffbb61")
 target_link_libraries(${PROJECT_NAME} Zydis)
 
-CPMAddPackage("gh:cursey/safetyhook#main")
+CPMAddPackage("gh:cursey/safetyhook#2f28386")
 target_link_libraries(${PROJECT_NAME} safetyhook)
 
 CPMAddPackage("gh:peonii/slc#main")
