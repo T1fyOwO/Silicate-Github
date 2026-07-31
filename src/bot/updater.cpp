@@ -51,8 +51,11 @@ float BotUpdater::getSSB() {
     float f = GJBaseGameLayer::get()->m_player1->getPositionX();
     float a = speeds[playerSpeed] / Bot::get()->updater().getTps();
     float c = (f + a) - f;
+    float factor = c / a;
 
-    return c / a;
+    if (factor <= 0 || GJBaseGameLayer::get()->m_levelEndAnimationStarted) factor = 1;
+
+    return factor;
 }
 
 float BotUpdater::getTimeWarp() {
