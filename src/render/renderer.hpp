@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include "dsp.hpp"
 
@@ -79,6 +80,13 @@ struct glz::meta<RendererSettings> {
 
 class Renderer {
    public:
+    ~Renderer() {
+        // don't let the thread get charlie kirked and cause a crash
+        if (m_recordThread.joinable()) {
+            m_recordThread.detach();
+        }
+    }
+
     void queueStart() { m_shouldStart = true; }
     void startIfQueued() {
         if (m_shouldStart) {
@@ -106,6 +114,8 @@ class Renderer {
     }
 
     void recordLoop();
+
+    void finishStop();
 
     bool tryBeginFrame();
 
@@ -221,6 +231,9 @@ class Renderer {
 
     float m_visualFps = 60.0f;
     std::atomic<bool> m_recording = false;
+
+    std::thread m_recordThread;
+    std::atomic<bool> m_readyToKill = false;
 
     std::mutex m_recordMutex;
     std::condition_variable m_recordCv;
