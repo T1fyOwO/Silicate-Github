@@ -58,6 +58,7 @@ struct SLLevelEditorLayer : Modify<SLLevelEditorLayer, LevelEditorLayer> {
     bool init(GJGameLevel* level, bool p1) {
         if (!LevelEditorLayer::init(level, p1)) return false;
 
+        Bot::get()->updater().setPaused(false);
         Bot::get()->hitboxes().init(this);
 
         auto& t = Bot::get()->trajectory();
