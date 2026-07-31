@@ -55,6 +55,7 @@ struct glz::meta<RendererSettings> {
         "after_end_time", &T::m_afterEndTime, "color_fix", &T::m_colorFix,
         "render_args", &T::m_renderArgs, "output_path", hide{&T::m_outputPath},
         "music_volume", &T::m_musicVolume, "sfx_volume", &T::m_sfxVolume,
+        "fade_in", &T::m_fadeInTime, "fade_out", &T::m_fadeOutTime,
         "record_paused", &T::m_firstAttemptPause);
 };
 
