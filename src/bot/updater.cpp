@@ -14,6 +14,7 @@
 #include "assist/cps.hpp"
 #include "assist/hitboxes.hpp"
 #include "bot.hpp"
+#include "bot/updater.hpp"
 #include "checkpoint/fix.hpp"
 #include "label/label.hpp"
 #include "render/renderer.hpp"
@@ -23,6 +24,36 @@
 #include "util/profile.hpp"
 
 using namespace geode::prelude;
+
+float BotUpdater::getSSB() {
+    const static float speeds[5] = {
+        251.1601f,
+        311.5801f,
+        387.4201f,
+        468.0002f,
+        576.0002f
+    };
+
+    int playerSpeed = 1;
+
+    if (GJBaseGameLayer::get()->m_player1->m_playerSpeed == 0.7f)
+        playerSpeed = 0;
+    else if (GJBaseGameLayer::get()->m_player1->m_playerSpeed == 0.9f)
+        playerSpeed = 1;
+    else if (GJBaseGameLayer::get()->m_player1->m_playerSpeed == 1.1f)
+        playerSpeed = 2;
+    else if (GJBaseGameLayer::get()->m_player1->m_playerSpeed == 1.3f)
+        playerSpeed = 3;
+    else if (GJBaseGameLayer::get()->m_player1->m_playerSpeed == 1.6f)
+        playerSpeed = 4;
+
+    // formula given by ij9
+    float f = GJBaseGameLayer::get()->m_player1->getPositionX();
+    float a = speeds[playerSpeed] / Bot::get()->updater().getTps();
+    float c = (f + a) - f;
+
+    return c / a;
+}
 
 float BotUpdater::getTimeWarp() {
     if (auto pl = PlayLayer::get(); pl) {
@@ -243,7 +274,7 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
 
     if (auto renderer = Renderer::get();
         renderer->isRecording() && renderer->m_collectAudio) {
-        realDt = renderer->getDt();
+        realDt = renderer->getDt() / ((Bot::get()->updater().m_ssbFix->inner()) ? Bot::get()->updater().getSSB() : 1.f);
     }
 
     if (this->isPaused() && !Renderer::get()->isRecording()) {
@@ -256,13 +287,8 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
         }
     }
 
+    // cleanup later (or never since we're doing v2 anyways)
     bool calculateSsb = false;
-    if (isPlayLayer) {
-        calculateSsb = !((PlayLayer*)pl)->m_isPaused &&
-                       !((PlayLayer*)pl)->m_hasCompletedLevel &&
-                       pl->m_started && !pl->m_isPlatformer &&
-                       m_ssbFix->inner() && Renderer::get()->isRecording();
-    }
 
     bool useAccLockDelta =
         m_lockDelta->inner() &&
