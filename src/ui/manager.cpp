@@ -679,11 +679,13 @@ void UIManager::draw() {
                     m_state.m_currentTab = UIState::UITab::Render;
                 }
 
-                if (tabby::button_selector(
-                        "\uf0fe    Keybinds##Tab",
-                        m_state.m_currentTab == UIState::UITab::Keybinds)
-                        .pressed) {
-                    m_state.m_currentTab = UIState::UITab::Keybinds;
+                if (m_state.m_showExperimentalFeatures) {
+                    if (tabby::button_selector(
+                            "\uf0fe    Keybinds##Tab",
+                            m_state.m_currentTab == UIState::UITab::Keybinds)
+                            .pressed) {
+                        m_state.m_currentTab = UIState::UITab::Keybinds;
+                    }
                 }
 
                 if (tabby::button_selector(
