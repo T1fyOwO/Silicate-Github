@@ -31,7 +31,7 @@ static constexpr auto to_vector(R&& r) {
 
 SavedCheckpoint PracticeFix::createCheckpoint(CheckpointObject* obj,
                                               uint64_t attemptStartFrame) {
-    if (auto pl = PlayLayer::get(); pl) {
+    if (auto pl = PlayLayer::get(); pl && !pl->m_playerDied) {
         SavedCheckpoint checkpoint = {
             .m_player1 = SavedPlayerCheckpoint::create(pl->m_player1),
             .m_player2 = SavedPlayerCheckpoint::create(pl->m_player2),
