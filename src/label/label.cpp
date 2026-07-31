@@ -203,20 +203,13 @@ LabelManager::LabelManager() {
                                         : "Nothing");
              },
              {});
-    addLabel("ssb_dt", "Scroll Speed Bug DT",
+    addLabel("ssb_factor", "Scroll Speed Bug Factor",
              [](Label&) {
-                 float tfx = PlayLayer::get()->timeForPos(
-                     PlayLayer::get()->m_player1->m_position, 0,
-                     PlayLayer::get()->m_gameState.m_currentChannel, true, 0);
                  return fmt::format(
-                     "SSB DT: {:.10f}",
-                     Bot::get()->updater().m_lockDeltaMode->inner() ==
-                             BotUpdater::LockDeltaMode::Accuracy
-                         ? tfx - Bot::get()->updater().m_lastTfp
-                         : Bot::get()->updater().getPhysicsDt());
+                     "SSB Factor: {}",
+                     Bot::get()->updater().getSSB());
              },
              {});
-
     addLabel("touching_orbs", "Touching Orbs",
              [](Label&) {
                  // TODO: fix this. this makes way too many allocations

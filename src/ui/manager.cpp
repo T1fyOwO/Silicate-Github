@@ -1366,10 +1366,8 @@ void UIManager::draw() {
                 tabby::drag("After End Time",
                             renderer->m_settings.m_afterEndTime, 0.0f, 10000.0f,
                             1.0f, "{:.2f}s");
-                if (m_state.m_showExperimentalFeatures) {
-                    tabby::checkbox("SSB Fix",
-                                    Bot::get()->updater().m_ssbFix->inner());
-                }
+                tabby::checkbox("SSB Fix",
+                            Bot::get()->updater().m_ssbFix->inner());
 
                 tabby::drag("Music Volume", renderer->m_settings.m_musicVolume,
                             0.0, 1.0, 0.01, "{:.2f}");

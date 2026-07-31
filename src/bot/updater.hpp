@@ -148,6 +148,7 @@ class BotUpdater {
 
     cocos2d::CCLabelBMFont* m_frameLabel = nullptr;
 
+    float getSSB();
     float getTimeWarp();
 
     void calculateSteps(float dt, float targetDt);
