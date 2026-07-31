@@ -655,7 +655,7 @@ void triggerObject(EffectGameObject* object, GJBaseGameLayer* pl,
                 (RotateGameplayGameObject*)object;
 
             if (rotateObj->m_changeChannel) {
-                pl->m_gameState.m_rotateChannel = rotateObj->m_targetChannelID;
+                pl->m_gameState.m_currentChannel = rotateObj->m_targetChannelID;
                 pl->m_gameState
                     .m_spawnChannelRelated1[rotateObj->m_targetChannelID] =
                     rotateObj->m_groundDirection == 2 ||
