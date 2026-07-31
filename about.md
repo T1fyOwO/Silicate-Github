@@ -23,3 +23,7 @@ Silicate is a Geometry Dash bot that can play and record levels, render them, an
 ## Discord
 
 Join the [Silicate Discord server](https://discord.gg/y7xagk3C2m) for updates, and more!
+
+## Credits
+
+Thank you to [scarlet](https://discord.com/users/960236731158921326) for contributing to Silicate's development.

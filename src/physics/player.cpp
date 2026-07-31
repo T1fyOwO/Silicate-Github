@@ -65,7 +65,7 @@ void startDashing(PlayerObject* player, DashRingObject* ring) {
                 dashAngle = 180.0;
             }
 
-            angleHelper -= dashAngle;
+            angleHelper = dashAngle - angleHelper;
             if (angleHelper < -180.0) {
                 angleHelper += 360.0;
             } else if (angleHelper > 180.0) {
@@ -117,7 +117,7 @@ void startDashing(PlayerObject* player, DashRingObject* ring) {
         mult.y = x;
     }
 
-    double doubleX = x;
+    double doubleX = mult.x;
     player->m_dashX = doubleX;
     player->m_dashY = mult.y;
     if (!player->m_isPlatformer) {
