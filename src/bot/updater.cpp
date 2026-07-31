@@ -608,8 +608,9 @@ static void frameUpdateMidhook(SafetyHookContext&) {
                 auto pred = trajectory->simulate(pl, true, mode, false,
                                                  {
                                                      .m_bypassConfig = true,
+                                                     .m_maxLength = 3
                                                  });
-                if (pred.score <= 2) {
+                if (pred.score <= 3) {
                     bot->updater().setPaused(true);
                     // bot->updater().breakLoop();
                 }
@@ -628,8 +629,9 @@ static void frameUpdateMidhook(SafetyHookContext&) {
                 auto pred = trajectory->simulate(pl, false, mode, false,
                                                  {
                                                      .m_bypassConfig = true,
+                                                     .m_maxLength = 3
                                                  });
-                if (pred.score <= 2) {
+                if (pred.score <= 3) {
                     bot->updater().setPaused(true);
                     // bot->updater().breakLoop();
                 }
