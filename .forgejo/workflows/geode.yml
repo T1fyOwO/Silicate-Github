@@ -85,7 +85,7 @@ jobs:
 
       - name: Install Geode CLI
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN }}  # github.com PAT; overrides Forgejo's instance token
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN }} # github.com PAT; overrides Forgejo's instance token
         run: |
           set -euxo pipefail
           # Build the auth header with xtrace off so the token never reaches the
@@ -103,7 +103,7 @@ jobs:
 
       - name: Set up Windows cross-compilation tools
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN }}  # github.com PAT; overrides Forgejo's instance token
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN }} # github.com PAT; overrides Forgejo's instance token
         run: |
           set -euxo pipefail
           # Clones geode-sdk/clang-msvc-sdk and builds the xwin splat into
@@ -112,7 +112,7 @@ jobs:
 
       - name: Install Geode SDK
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN }}  # github.com PAT; overrides Forgejo's instance token
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN }} # github.com PAT; overrides Forgejo's instance token
         run: |
           set -euxo pipefail
           # The CLI requires at least one profile to operate; the path is only
@@ -153,4 +153,3 @@ jobs:
           name: silicate-win64
           path: output/*.geode
           if-no-files-found: error
-

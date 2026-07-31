@@ -646,6 +646,10 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
 
     void updateVisibility(float dt) {
         auto& updater = Bot::get()->updater();
+        if (!updater.m_shouldRender) {
+            return;
+        }
+
         if (updater.m_extrapolateFrames->inner()) {
             dt = CCDirector::get()->getDeltaTime();
         }

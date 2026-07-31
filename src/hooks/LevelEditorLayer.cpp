@@ -30,6 +30,14 @@ struct SLLevelEditorLayer : Modify<SLLevelEditorLayer, LevelEditorLayer> {
 
         bot->updater().resetFrame();
 
+        if (auto ui = EditorUI::get(); ui && ui->m_isPlayingMusic) {
+            ui->onPlayback(
+                nullptr);  // pause song playback if is playing, stopPlayback
+                           // doesn't do anything (thank you robtop)
+        }
+
+        m_playbackActive = false;
+
         LevelEditorLayer::onPlaytest();
 
         bot->replaySystem().onReset(bot->updater().getFrame());
@@ -37,8 +45,10 @@ struct SLLevelEditorLayer : Modify<SLLevelEditorLayer, LevelEditorLayer> {
         bot->trajectory().update(this);
         bot->hitboxes().clearTrail();
 
-        GJBaseGameLayer::get()->handleButton(false, (int)PlayerButton::Jump, true);
-        GJBaseGameLayer::get()->handleButton(false, (int)PlayerButton::Jump, false);
+        GJBaseGameLayer::get()->handleButton(false, (int)PlayerButton::Jump,
+                                             true);
+        GJBaseGameLayer::get()->handleButton(false, (int)PlayerButton::Jump,
+                                             false);
 
         bot->updater().m_canDie->inner() = false;
         bot->updater().m_inputIsDeath = false;

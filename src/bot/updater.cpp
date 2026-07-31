@@ -26,13 +26,8 @@
 using namespace geode::prelude;
 
 float BotUpdater::getSSB() {
-    const static float speeds[5] = {
-        251.1601f,
-        311.5801f,
-        387.4201f,
-        468.0002f,
-        576.0002f
-    };
+    const static float speeds[5] = {251.1601f, 311.5801f, 387.4201f, 468.0002f,
+                                    576.0002f};
 
     int playerSpeed = 1;
 
@@ -53,7 +48,8 @@ float BotUpdater::getSSB() {
     float c = (f + a) - f;
     float factor = c / a;
 
-    if (factor <= 0 || GJBaseGameLayer::get()->m_levelEndAnimationStarted) factor = 1;
+    if (factor <= 0 || GJBaseGameLayer::get()->m_levelEndAnimationStarted)
+        factor = 1;
 
     return factor;
 }
@@ -152,6 +148,7 @@ static void runFastLockDeltaUpdates(float realDt,
             updater.getPhysicsDt());
 
         if (updater.estimatedStepCount >= 1) {
+            updater.m_shouldRender = true;
             update(realDt * updater.m_speedhack->inner());
         }
     } else {
@@ -169,12 +166,16 @@ static void runFastLockDeltaUpdates(float realDt,
 
             if (safeSteps > 0) {
                 updater.estimatedStepCount = safeSteps;
+                if (steps - safeSteps == 0) {
+                    updater.m_shouldRender = true;
+                }
                 update(updater.getPhysicsDt() * safeSteps);
                 steps -= safeSteps;
             }
 
             if (steps > 0) {
                 updater.estimatedStepCount = 1;
+                updater.m_shouldRender = true;
                 update(realDt * updater.m_speedhack->inner());
                 steps -= 1;
             }
@@ -277,7 +278,9 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
 
     if (auto renderer = Renderer::get();
         renderer->isRecording() && renderer->m_collectAudio) {
-        realDt = renderer->getDt() / ((Bot::get()->updater().m_ssbFix->inner()) ? Bot::get()->updater().getSSB() : 1.f);
+        realDt = renderer->getDt() / ((Bot::get()->updater().m_ssbFix->inner())
+                                          ? Bot::get()->updater().getSSB()
+                                          : 1.f);
     }
 
     if (this->isPaused() && !Renderer::get()->isRecording()) {

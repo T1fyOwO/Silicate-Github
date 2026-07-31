@@ -505,7 +505,7 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
                 // Collapse consecutive segments that map to the same on-screen
                 // pixel; keeps the trail as dense as the current zoom allows
                 // without overdrawing identical positions.
-                const float SUBPIXEL_FACTOR = 3;
+                const float SUBPIXEL_FACTOR = 2;
                 const int px = static_cast<int>(std::floor(
                     (unit.m_rect.getMidX() * scaleX + objX) * SUBPIXEL_FACTOR));
                 const int py = static_cast<int>(std::floor(
