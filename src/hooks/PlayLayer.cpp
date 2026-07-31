@@ -713,7 +713,41 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
         Renderer* renderer = Renderer::get();
         renderer->startIfQueued();
 
-        return PlayLayer::setupHasCompleted();
+        PlayLayer::setupHasCompleted();
+
+        bot->hitboxes().raiseGameUI(this);
+    }
+
+    void showCompleteText() {
+        auto bot = Bot::get();
+        if (!bot->isEnabled()) {
+            return PlayLayer::showCompleteText();
+        }
+
+        std::unordered_set<CCNode*> before;
+        this->collectChildren(before);
+
+        PlayLayer::showCompleteText();
+
+        std::unordered_set<CCNode*> after;
+        this->collectChildren(after);
+
+        for (CCNode* child : after) {
+            if (!before.contains(child)) {
+                bot->hitboxes().raiseAbove(child);
+            }
+        }
+    }
+
+    void collectChildren(std::unordered_set<CCNode*>& out) {
+        CCArray* children = this->getChildren();
+        if (!children) return;
+
+        for (unsigned int i = 0; i < children->count(); i++) {
+            if (auto child = static_cast<CCNode*>(children->objectAtIndex(i))) {
+                out.insert(child);
+            }
+        }
     }
 
     void addObject(GameObject* obj) {

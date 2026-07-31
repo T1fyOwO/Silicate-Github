@@ -1,6 +1,9 @@
 #include "hitboxes.hpp"
 
 #include <Geode/Geode.hpp>
+#include <Geode/binding/EditorUI.hpp>
+#include <Geode/binding/LevelEditorLayer.hpp>
+#include <Geode/binding/PlayLayer.hpp>
 
 #include "Geode/cocos/draw_nodes/CCDrawNode.h"
 #include "bot/bot.hpp"
@@ -125,6 +128,15 @@ static void syncToObjectLayer(cocos2d::CCNode* node, cocos2d::CCNode* layer) {
     node->ignoreAnchorPointForPosition(layer->isIgnoreAnchorPointForPosition());
 }
 
+static int containerZOrder(GJBaseGameLayer* pl) {
+    if (auto lel = geode::cast::typeinfo_cast<LevelEditorLayer*>(pl);
+        lel && lel->m_editorUI) {
+        return lel->m_editorUI->getZOrder() - 1;
+    }
+
+    return (pl->m_uiLayer ? pl->m_uiLayer->getZOrder() : 101) + 1;
+}
+
 void Hitboxes::init(GJBaseGameLayer* pl) {
     if (m_initialized) {
         this->destroy();  // probably worth it to just recreate
@@ -166,13 +178,48 @@ void Hitboxes::init(GJBaseGameLayer* pl) {
         return;
     }
 
-    // m_uiLayer is added to the game layer at z order 101, so this keeps the
-    // hitboxes above every gameplay layer
-    const int zOrder =
-        (pl->m_uiLayer ? pl->m_uiLayer->getZOrder() : 101) + 10000;
-    pl->addChild(m_container, zOrder);
+    pl->addChild(m_container, containerZOrder(pl));
 
     m_initialized = true;
+    this->raiseGameUI(pl);
+}
+
+static cocos2d::CCNode* ancestorUnder(cocos2d::CCNode* node,
+                                      cocos2d::CCNode* parent) {
+    for (auto n = node; n; n = n->getParent()) {
+        if (n->getParent() == parent) return n;
+    }
+
+    return nullptr;
+}
+
+void Hitboxes::raiseGameUI(GJBaseGameLayer* pl) {
+    if (!m_initialized || !m_container) return;
+
+    auto play = geode::cast::typeinfo_cast<PlayLayer*>(pl);
+    if (!play) return;
+
+    if (!play->m_progressBar) {
+        return;
+    }
+
+    const int zOrder = m_container->getZOrder();
+
+    auto bar = ancestorUnder(play->m_progressBar, play);
+    auto label = ancestorUnder(play->m_percentageLabel, play);
+
+    if (bar == play->m_uiLayer || label == play->m_uiLayer) {
+        return;
+    }
+
+    if (bar) bar->setZOrder(zOrder + 1);
+    if (label) label->setZOrder(zOrder + 2);
+}
+
+void Hitboxes::raiseAbove(cocos2d::CCNode* node) {
+    if (!m_initialized || !m_container || !node) return;
+
+    node->setZOrder(m_container->getZOrder() + 1);
 }
 
 static void iterateObjects(GJBaseGameLayer* pl,

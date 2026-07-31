@@ -10,6 +10,7 @@
 
 #include "bot/bot.hpp"
 #include "bot/updater.hpp"
+#include "checkpoint/fix.hpp"
 
 using namespace geode::prelude;
 
@@ -19,8 +20,11 @@ void ReplaySystem::onReset(uint32_t newFrame) {
 
         m_inputIndex = m_actionAtom.length();
 
-        m_teleportRandomState = m_teleportRandomState * 214013 + 2531011;
-        m_shakeRandomState = m_shakeRandomState * 214013 + 2531011;
+        if (!GJBaseGameLayer::get()->m_isPracticeMode &&
+            !Bot::get()->practiceFix().m_isBackstep) {
+            m_teleportRandomState = m_teleportRandomState * 214013 + 2531011;
+            m_shakeRandomState = m_shakeRandomState * 214013 + 2531011;
+        }
     } else {
         if (m_actionAtom.m_actions.empty()) {
             m_inputIndex = 0;

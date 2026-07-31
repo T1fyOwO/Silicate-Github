@@ -64,6 +64,13 @@ class Hitboxes {
 
     void init(GJBaseGameLayer* pl);
 
+    // Lifts the parts of the game's HUD that would otherwise end up under the
+    // hitbox layer. Safe to call whenever they get (re)created.
+    void raiseGameUI(GJBaseGameLayer* pl);
+
+    // Lifts a single node above the hitbox layer
+    void raiseAbove(cocos2d::CCNode* node);
+
     void clearTrail();
     void saveToTrail(GJBaseGameLayer* pl);
 
