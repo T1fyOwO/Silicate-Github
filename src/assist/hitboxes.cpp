@@ -50,12 +50,12 @@ static void drawPlayerHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
                          width, CC_COLOR(Type::PlayerCircle), segments);
     }
 
-    if (HB_ENABLED(Type::Player)) {
+    if (HB_ENABLED(Type::Player) && !Bot::get()->hitboxes().m_trailEnabled->inner()) {
         node->drawRect(rect, CC_FILL_COLOR(Type::Player), width,
                        CC_COLOR(Type::Player),
                        cocos2d::BorderAlignment::Inside);
     }
-    if (HB_ENABLED(Type::PlayerInner)) {
+    if (HB_ENABLED(Type::PlayerInner) && !Bot::get()->hitboxes().m_trailEnabled->inner()) {
         node->drawRect(scaled, CC_FILL_COLOR(Type::PlayerInner), width,
                        CC_COLOR(Type::PlayerInner),
                        cocos2d::BorderAlignment::Inside);
@@ -562,7 +562,7 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
     }
 }
 
-static constexpr size_t TRAIL_MAX_UNITS = 69420;
+static constexpr size_t TRAIL_MAX_UNITS = 999999;
 
 static void appendTrailUnit(std::deque<HitboxTrailUnit>& trail,
                             PlayerObject* player, const cocos2d::CCRect& rect) {
