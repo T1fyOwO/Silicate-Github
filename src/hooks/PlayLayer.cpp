@@ -646,15 +646,16 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
 
     void updateVisibility(float dt) {
         auto& updater = Bot::get()->updater();
-        if (!updater.m_shouldRender) {
-            return;
-        }
-
         if (updater.m_extrapolateFrames->inner()) {
             dt = CCDirector::get()->getDeltaTime();
         }
 
         PlayLayer::updateVisibility(dt);
+
+        if (!updater.m_shouldRender) {
+            return;
+        }
+
         if (updater.m_layoutMode->inner()) {
             constexpr std::array<int, 5> colors = {1000, 1001, 1009, 1013,
                                                    1014};

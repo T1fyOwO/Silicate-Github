@@ -324,26 +324,36 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
             bool boxOffsetCalculated = object->m_boxOffsetCalculated;
 
             ResolvedHBCategory const* cat = &hb.interactable;
-            if (auto ro = geode::cast::typeinfo_cast<RingObject*>(object); ro) {
+            if (auto ro = geode::cast::typeinfo_cast<RingObject*>(object);
+                ro && hb.interactableActive.enabled) {
                 if (pl->m_player1->m_touchingRings->containsObject(object) ||
                     pl->m_player2->m_touchingRings->containsObject(object)) {
                     cat = &hb.interactableActive;
                 }
             }
 
-            if (object->getObjectRect().intersectsRect(
-                    pl->m_player1->getObjectRect()) ||
-                object->getObjectRect().intersectsRect(
-                    pl->m_player2->getObjectRect())) {
-                cat = &hb.interactableActive;
-            }
-
             if (auto ob =
                     isEditor ? object->getOrientedBox() : object->m_orientedBox;
                 ob) {
+                if (ob->overlaps(pl->m_player1->getOrientedBox()) ||
+                    ob->overlaps(pl->m_player2->getOrientedBox())) {
+                    if (hb.interactableActive.enabled) {
+                        cat = &hb.interactableActive;
+                    }
+                }
+
                 node->drawPolygon(ob->m_corners.data(), 4, cat->fill, width,
                                   cat->line, cocos2d::BorderAlignment::Inside);
             } else {
+                if (object->getObjectRect().intersectsRect(
+                        pl->m_player1->getObjectRect()) ||
+                    object->getObjectRect().intersectsRect(
+                        pl->m_player2->getObjectRect())) {
+                    if (hb.interactableActive.enabled) {
+                        cat = &hb.interactableActive;
+                    }
+                }
+
                 node->drawRect(object->getObjectRect(), cat->fill, width,
                                cat->line, cocos2d::BorderAlignment::Inside);
             }

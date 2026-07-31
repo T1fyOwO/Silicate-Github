@@ -11,6 +11,8 @@ using namespace geode::prelude;
 
 struct SLCCDirector : Modify<SLCCDirector, CCDirector> {
     void drawScene() {
+        Renderer::get()->finishStop();
+
         if (!Bot::get()->isEnabled()) {
             return CCDirector::drawScene();
         }

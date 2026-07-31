@@ -38,6 +38,7 @@ class ReplaySystem {
     uint64_t m_startingSeedThisAttempt = 0;
     uint64_t m_shakeRandomState = 0;
     uint64_t m_teleportRandomState = 0;
+    double m_initialTPS = 240.0;
     bool m_flipProcessingInputs = false;
 
     bool m_forceNextInput = false;

@@ -211,6 +211,11 @@ static void resizeShaderLayer(CCSize size, CCSize original) {
 geode::Result<> Renderer::start() {
     geode::log::info("Starting renderer");
 
+    this->finishStop();
+    if (m_recording || m_recordThread.joinable()) {
+        return geode::Err("A render is already in progress");
+    }
+
     FMODAudioEngine::get()->m_system->getSoftwareFormat(&m_sampleRate, nullptr,
                                                         &m_channels);
     m_seenFrames = 0;
@@ -524,7 +529,8 @@ geode::Result<> Renderer::start() {
     AudioRecorder::get()->attach(m_settings.m_musicVolume,
                                  m_settings.m_sfxVolume);
 
-    std::thread(&Renderer::recordLoop, this).detach();
+    m_readyToKill.store(false, std::memory_order_relaxed);
+    m_recordThread = std::thread(&Renderer::recordLoop, this);
 
     return geode::Ok();
 }
@@ -667,57 +673,49 @@ geode::Result<> Renderer::stop() {
     AudioRecorder::get()->detach();
     AudioRecorder::get()->uninit();
 
-    if (m_pkt && m_videoCodecCtx && m_formatCtx && m_videoStream) {
-        ff->avcodec_send_frame(m_videoCodecCtx.get(), nullptr);
-        while (ff->avcodec_receive_packet(m_videoCodecCtx.get(), m_pkt.get()) ==
-               0) {
-            ff->av_packet_rescale_ts(m_pkt.get(), m_videoCodecCtx->time_base,
-                                     m_videoStream->time_base);
-            m_pkt->stream_index = m_videoStream->index;
+    std::string error;
+
+    auto flush = [&](AVCodecContext* codecCtx, AVPacket* pkt,
+                     AVStream* stream) {
+        if (!m_formatCtx || !codecCtx || !pkt || !stream) {
+            return;
+        }
+
+        ff->avcodec_send_frame(codecCtx, nullptr);
+        while (ff->avcodec_receive_packet(codecCtx, pkt) == 0) {
+            ff->av_packet_rescale_ts(pkt, codecCtx->time_base,
+                                     stream->time_base);
+            pkt->stream_index = stream->index;
 
             int ret;
             {
                 std::lock_guard<std::mutex> lock(m_muxMutex);
-                ret = ff->av_interleaved_write_frame(m_formatCtx, m_pkt.get());
+                ret = ff->av_interleaved_write_frame(m_formatCtx, pkt);
             }
+
+            ff->av_packet_unref(pkt);
+
             if (ret < 0) {
-                return geode::Err("Failed to write frame");
+                if (error.empty()) {
+                    error = fmt::format("Failed to write frame: {}", ret);
+                }
+                break;
             }
-
-            ff->av_packet_unref(m_pkt.get());
         }
-    }
+    };
 
-    if (m_audioPkt && m_audioCodecCtx && m_formatCtx && m_audioStream) {
-        ff->avcodec_send_frame(m_audioCodecCtx.get(), nullptr);
-        while (ff->avcodec_receive_packet(m_audioCodecCtx.get(),
-                                          m_audioPkt.get()) == 0) {
-            ff->av_packet_rescale_ts(m_audioPkt.get(),
-                                     m_audioCodecCtx->time_base,
-                                     m_audioStream->time_base);
-            m_audioPkt->stream_index = m_audioStream->index;
+    flush(m_videoCodecCtx.get(), m_pkt.get(), m_videoStream);
+    flush(m_audioCodecCtx.get(), m_audioPkt.get(), m_audioStream);
 
-            int ret;
-            {
-                std::lock_guard<std::mutex> lock(m_muxMutex);
-                ret = ff->av_interleaved_write_frame(m_formatCtx,
-                                                     m_audioPkt.get());
-            }
-            if (ret < 0) {
-                return geode::Err("Failed to write frame");
-            }
-
-            ff->av_packet_unref(m_audioPkt.get());
+    if (m_formatCtx) {
+        int ret;
+        {
+            std::lock_guard<std::mutex> lock(m_muxMutex);
+            ret = ff->av_write_trailer(m_formatCtx);
         }
-    }
-
-    int ret;
-    {
-        std::lock_guard<std::mutex> lock(m_muxMutex);
-        ret = ff->av_write_trailer(m_formatCtx);
-    }
-    if (ret < 0) {
-        return geode::Err("Failed to write trailer");
+        if (ret < 0 && error.empty()) {
+            error = fmt::format("Failed to write trailer: {}", ret);
+        }
     }
 
     geode::log::info("Rendering has stopped. Cleaning up");
@@ -727,14 +725,23 @@ geode::Result<> Renderer::stop() {
         m_frame->data[1] = nullptr;
     }
 
-    ff->avio_close(m_formatCtx->pb);
-    ff->swr_free(&m_swrCtx);
+    if (m_formatCtx) {
+        if (m_formatCtx->pb) {
+            ff->avio_close(m_formatCtx->pb);
+        }
 
-    // streams are owned by the format context, so this frees them too
-    ff->avformat_free_context(m_formatCtx);
-    m_formatCtx = nullptr;
+        // streams are owned by the format context, so this frees them too
+        ff->avformat_free_context(m_formatCtx);
+        m_formatCtx = nullptr;
+    }
+
     m_videoStream = nullptr;
     m_audioStream = nullptr;
+
+    ff->swr_free(&m_swrCtx);
+
+    m_videoCodecCtx.reset();
+    m_audioCodecCtx.reset();
 
     m_texture.destroy();
 
@@ -743,6 +750,10 @@ geode::Result<> Renderer::stop() {
     }
 
     geode::log::info("Renderer cleanup done");
+
+    if (!error.empty()) {
+        return geode::Err(error);
+    }
 
     return geode::Ok();
 }
@@ -791,6 +802,24 @@ void Renderer::recordLoop() {
         m_encoded.fetch_add(1, std::memory_order_release);
     }
 
+    {
+        std::lock_guard<std::mutex> lock(m_recordMutex);
+        m_recording = false;
+    }
+
+    m_readyToKill.store(true, std::memory_order_release);
+    geode::log::info("Encode thread killed");
+}
+
+void Renderer::finishStop() {
+    if (!m_readyToKill.exchange(false, std::memory_order_acquire)) {
+        return;
+    }
+
+    if (m_recordThread.joinable()) {
+        m_recordThread.join();
+    }
+
     auto stopResult = this->stop();
     if (stopResult.isErr()) {
         geode::log::error("Failed to stop recording: {}",
@@ -808,7 +837,8 @@ void Renderer::enqueueFrame(uint8_t* data, int64_t pts) {
 
 void Renderer::harvestCompleted() {
     uint8_t* data = nullptr;
-    while (m_texture.tryHarvest(&data, /* block */ false)) {
+    while (!m_ptsQueue.empty() &&
+           m_texture.tryHarvest(&data, /* block */ false)) {
         int64_t pts = m_ptsQueue.front();
         m_ptsQueue.pop_front();
         this->enqueueFrame(data, pts);
@@ -817,7 +847,8 @@ void Renderer::harvestCompleted() {
 
 void Renderer::flushPending() {
     uint8_t* data = nullptr;
-    while (m_texture.mappedCount() < m_texture.issuedCount()) {
+    while (!m_ptsQueue.empty() &&
+           m_texture.mappedCount() < m_texture.issuedCount()) {
         if (!m_texture.tryHarvest(&data, /* block */ true)) {
             break;
         }
