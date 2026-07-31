@@ -1785,6 +1785,9 @@ void UIManager::draw() {
                 if (tabby::button("Disable Bot").pressed) {
                     Bot::get()->m_enabled->inner() = false;
                     Bot::get()->m_enabled->notifyChange();
+                    FMOD::ChannelGroup* master;
+                    FMODAudioEngine::get()->m_system->getMasterChannelGroup(&master);
+                    master->setPitch(1.0);
                 }
 
                 tabby::checkbox("Experimental Features",
