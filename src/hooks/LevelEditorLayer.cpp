@@ -1,7 +1,10 @@
 #include "Geode/binding/LevelEditorLayer.hpp"
 
+#include <Geode/Enums.hpp>
 #include <Geode/Geode.hpp>
+#include <Geode/binding/GJBaseGameLayer.hpp>
 
+#include "Geode/ui/Button.hpp"
 #include "assist/autoclicker.hpp"
 #include "assist/hitboxes.hpp"
 #include "bot/bot.hpp"
@@ -34,12 +37,8 @@ struct SLLevelEditorLayer : Modify<SLLevelEditorLayer, LevelEditorLayer> {
         bot->trajectory().update(this);
         bot->hitboxes().clearTrail();
 
-        m_queuedButtons.clear();
-
-        m_player1->releaseAllButtons();
-        m_player2->releaseAllButtons();
-
-        this->processQueuedButtons(0.0, true);
+        GJBaseGameLayer::get()->handleButton(false, (int)PlayerButton::Jump, true);
+        GJBaseGameLayer::get()->handleButton(false, (int)PlayerButton::Jump, false);
 
         bot->updater().m_canDie->inner() = false;
         bot->updater().m_inputIsDeath = false;
