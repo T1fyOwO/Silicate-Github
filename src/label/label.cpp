@@ -433,7 +433,7 @@ CCLabelBMFont* Label::get() {
         label->setScale(m_config.m_scale);
         // this->calculatePosition(0, label);
 
-        PlayLayer::get()->addChild(label, 1000);
+        PlayLayer::get()->addChild(label, 100000);
     }
 
     return label;
