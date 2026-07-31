@@ -192,6 +192,7 @@ struct glz::meta<SLSettings> {
         "video_name_template", &T::videoNameTemplate,
         "preset", &T::lastLoadedPreset,
         "preview_audio", &T::previewAudio,
+        "auto_exit_level", &T::autoExitLevel,
         "autoclicker_enabled", hide{&T::autoclickerEnabled},
 
         "ssb_fix", &T::scrollSpeedBugFix,
