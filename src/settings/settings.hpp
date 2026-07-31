@@ -122,6 +122,8 @@ class SLSettings {
     struct HitboxSettings {
         double width = 0.5;
         bool trailEnabled = false;
+        bool playerAbove = true;
+        bool rotatedAbove = true;
 
         enum Type {
             Player,

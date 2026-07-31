@@ -861,6 +861,14 @@ void UIManager::draw() {
                 tabby::checkbox("Show Trail##Hitboxes",
                                 Bot::get()->hitboxes().m_trailEnabled->inner());
 
+                if (Bot::get()->hitboxes().m_trailEnabled->inner())
+                {
+                    tabby::checkbox("Player Hitbox Above Trail##Hitboxes",
+                                    Bot::get()->hitboxes().m_playerAbove->inner());
+                    tabby::checkbox("Rotated Hitbox Above Trail##Hitboxes",
+                                    Bot::get()->hitboxes().m_rotatedAbove->inner());
+                }
+
                 tabby::drag("Width##Hitboxes",
                             Bot::get()->hitboxes().m_width->inner(), 0.0, 1.0,
                             0.02f, "{:.2f}");

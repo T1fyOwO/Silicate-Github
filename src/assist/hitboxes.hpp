@@ -59,6 +59,10 @@ class Hitboxes {
         SLValue<bool>::create("hitboxes.enabled", &_enabled);
     SLValuePtr<bool> m_trailEnabled = SLValue<bool>::create(
         "hitboxes.trail_enabled", &SLSettings::get()->hitboxes.trailEnabled);
+    SLValuePtr<bool> m_playerAbove = SLValue<bool>::create(
+        "hitboxes.player_above", &SLSettings::get()->hitboxes.playerAbove);
+    SLValuePtr<bool> m_rotatedAbove = SLValue<bool>::create(
+        "hitboxes.rotated_above", &SLSettings::get()->hitboxes.rotatedAbove);
     SLValuePtr<double> m_width = SLValue<double>::create(
         "hitboxes.width", &SLSettings::get()->hitboxes.width);
 
