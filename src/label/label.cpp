@@ -86,8 +86,37 @@ LabelManager::LabelManager() {
         "player_xvel", "Player X Velocity",
         [](Label&) { GET_PLAYER_VAR("X Velocity", platformerXVelocity, 6) },
         {});
-    addLabel("player_yvel", "Player Y Velocity",
-             [](Label&) { GET_PLAYER_VAR("Y Velocity", yVelocity, 3) }, {});
+
+    addLabel(
+        "player_yvel", "Player Y Velocity",
+        [](Label&) {
+            auto pl = PlayLayer::get();
+            auto player = pl->m_player1;
+            auto player2 = pl->m_player2;
+
+            static bool isVelocityUnroundingLoaded =
+                Loader::get()->isModLoaded("chizz.velocity-unrounding");
+
+            if (isVelocityUnroundingLoaded) {
+                if (pl->m_gameState.m_isDualMode && player2) {
+                    return fmt::format(
+                        "Y Velocity: {:.8f} / {:.8f} (Unrounded)",
+                        player->m_yVelocity, player2->m_yVelocity);
+                } else {
+                    return fmt::format("Y Velocity: {:.8f} (Unrounded)",
+                                       player->m_yVelocity);
+                }
+            }
+
+            if (pl->m_gameState.m_isDualMode && player2) {
+                return fmt::format("Y Velocity: {:.3f} / {:.3f}",
+                                   player->m_yVelocity, player2->m_yVelocity);
+            } else {
+                return fmt::format("Y Velocity: {:.3f}", player->m_yVelocity);
+            }
+        },
+        {});
+
     addLabel("player_rot", "Player Rotation",
              [](Label&) { GET_PLAYER_VAR("Rotation", fRotationX, 3) }, {});
     addLabel("player_speed", "Player Speed",
@@ -205,9 +234,8 @@ LabelManager::LabelManager() {
              {});
     addLabel("ssb_factor", "Scroll Speed Bug Factor",
              [](Label&) {
-                 return fmt::format(
-                     "SSB Factor: {}",
-                     Bot::get()->updater().getSSB());
+                 return fmt::format("SSB Factor: {}",
+                                    Bot::get()->updater().getSSB());
              },
              {});
     addLabel("touching_orbs", "Touching Orbs",
