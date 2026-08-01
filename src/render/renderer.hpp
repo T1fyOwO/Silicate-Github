@@ -58,7 +58,8 @@ struct glz::meta<RendererSettings> {
         "render_args", &T::m_renderArgs, "output_path", hide{&T::m_outputPath},
         "music_volume", &T::m_musicVolume, "sfx_volume", &T::m_sfxVolume,
         "fade_in", &T::m_fadeInTime, "fade_out", &T::m_fadeOutTime,
-        "visual_fps", &T::m_visualFps, "record_paused", &T::m_firstAttemptPause);
+        "visual_fps", &T::m_visualFps, "record_paused",
+        &T::m_firstAttemptPause);
 };
 
 #define SL_AV_PTR(type) std::unique_ptr<type, std::function<void(type*)>>
@@ -96,6 +97,9 @@ class Renderer {
             if (ret.isErr()) {
                 geode::log::error("Failed to start recording: {}",
                                   ret.unwrapErr());
+                // PlayLayer::init took the view for a render that never
+                // happened
+                this->restoreView();
             }
         }
     }
@@ -105,6 +109,10 @@ class Renderer {
     // geode::Result<float> writeAudio(std::vector<float>& data);
     geode::Result<> writeAudio(std::vector<float>& data, uint64_t pts);
     geode::Result<> stop();
+
+    void acquireView();
+    void reacquireView();
+    void restoreView();
 
     void signalStop() {
         {
@@ -263,6 +271,9 @@ class Renderer {
 
     int m_alignedWidth = 0;
     int m_alignedHeight = 0;
+
+    cocos2d::CCSize m_windowSize;
+    bool m_viewResized = false;
 
     bool m_ffmpegLoaded = false;
 

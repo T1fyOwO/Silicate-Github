@@ -492,6 +492,8 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
             Renderer::get()->signalStop();
         }
 
+        Renderer::get()->restoreView();
+
         auto bot = Bot::get();
 
         // Deallocate trajectory and hitbox nodes
@@ -572,6 +574,7 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
         if (renderer->m_shouldStart) {
             FMODAudioEngine::sharedEngine()->stopAllMusic(true);
             FMODAudioEngine::sharedEngine()->stopAllEffects();
+            renderer->acquireView();
         }
 
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
@@ -612,7 +615,8 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
     void destroyPlayer(PlayerObject* player, GameObject* gameObject) {
         auto bot = Bot::get();
         // destroyPlayer can be triggered by multiple objects in the same tick
-        if (!bot->trajectory().hasDied(player) && !this->m_player1->m_isDead && !this->m_player2->m_isDead) {
+        if (!bot->trajectory().hasDied(player) && !this->m_player1->m_isDead &&
+            !this->m_player2->m_isDead) {
             this->conditionalDestroyPlayer(player, gameObject);
 
             if (bot->updater().m_preventDeath->inner() &&

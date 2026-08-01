@@ -168,44 +168,78 @@ static void silentChangeSize(CCSize size) {
     glViewport(0, 0, size.width, size.height);
 }
 
-static void resizeShaderLayer(CCSize size, CCSize original) {
-    ShaderLayer* sh = GJBaseGameLayer::get()->m_shaderLayer;
-    sh->m_screenSize = size;
-    sh->m_scaleFactor = size.height / CCDirector::get()->getWinSize().height;
-    sh->m_aspectRatio = size.width / size.height;
+static void resizeShaderLayer(CCSize size) {
+    auto gjbgl = GJBaseGameLayer::get();
+    if (!gjbgl || !gjbgl->m_shaderLayer) {
+        return;
+    }
 
+    ShaderLayer* sh = gjbgl->m_shaderLayer;
     auto winSize = CCDirector::get()->getWinSize();
-    float baseAspectRatio = original.aspect();
+
+    sh->m_screenSize = size;
+    sh->m_scaleFactor = size.height / winSize.height;
+    sh->m_aspectRatio = size.width / size.height;
 
     float csf = CCDirector::get()->getContentScaleFactor();
     CCDirector::get()->setContentScaleFactor(1.0);
     sh->m_renderTexture->release();
-    sh->m_renderTexture = nullptr;
     sh->m_renderTexture = CCRenderTexture::create(
-        size.width / sh->m_aspectRatio * baseAspectRatio, size.height,
-        kCCTexture2DPixelFormat_RGBA8888);
+        size.width, size.height, kCCTexture2DPixelFormat_RGBA8888);
     sh->m_renderTexture->retain();
     CCDirector::get()->setContentScaleFactor(csf);
     sh->m_sprite->setTexture(sh->m_renderTexture->getSprite()->getTexture());
     sh->m_textureContentSize = sh->m_sprite->getTexture()->getContentSize();
     sh->m_targetTextureSize = size;
     sh->m_targetTextureSizeExtra = CCSize(0.0f, 0.0f);
-    if (baseAspectRatio > sh->m_aspectRatio) {
-        float calculatedWidth =
-            size.width / sh->m_aspectRatio * baseAspectRatio;
-        sh->m_targetTextureSizeExtra =
-            cocos2d::CCSize{calculatedWidth - size.width, 0.0};
-    } else if (baseAspectRatio < sh->m_aspectRatio) {
-        float calculatedHeight =
-            size.height / sh->m_aspectRatio * baseAspectRatio;
-        sh->m_targetTextureSizeExtra =
-            cocos2d::CCSize{0.0, calculatedHeight - size.height};
-    }
-    sh->m_sprite->setTextureRect({-1.0f + sh->m_targetTextureSizeExtra.width,
-                                  -1.0f + sh->m_targetTextureSizeExtra.height,
-                                  size.width + 2.0f, size.height + 2.0f});
+    sh->m_sprite->setTextureRect(
+        {-1.0f, -1.0f, size.width + 2.0f, size.height + 2.0f});
     sh->m_state.m_textureScaleX = size.width / winSize.width;
     sh->m_state.m_textureScaleY = size.height / winSize.height;
+}
+
+// kinda does nothing since ALIGNMENT=1, if we were to align then maybe it would
+// do something but i don't wanna copypaste ts everywhere
+static CCSize alignedRenderSize(const RendererSettings& settings) {
+    return CCSize((settings.m_width + ALIGNMENT - 1) & ~(ALIGNMENT - 1),
+                  (settings.m_height + ALIGNMENT - 1) & ~(ALIGNMENT - 1));
+}
+
+void Renderer::acquireView() {
+    if (m_viewResized) {
+        return;
+    }
+
+    m_windowSize = CCDirector::get()->getOpenGLView()->getFrameSize();
+    m_viewResized = true;
+    silentChangeSize(alignedRenderSize(m_settings));
+}
+
+void Renderer::reacquireView() {
+    if (!m_viewResized) {
+        return;
+    }
+
+    CCSize frameSize = CCDirector::get()->getOpenGLView()->getFrameSize();
+    if (frameSize.equals(m_windowSize)) {
+        return;
+    }
+
+    m_windowSize = frameSize;
+    silentChangeSize(alignedRenderSize(m_settings));
+
+    m_texture.m_windowWidth = m_windowSize.width;
+    m_texture.m_windowHeight = m_windowSize.height;
+}
+
+void Renderer::restoreView() {
+    if (!m_viewResized) {
+        return;
+    }
+
+    m_viewResized = false;
+    silentChangeSize(m_windowSize);
+    resizeShaderLayer(m_windowSize);
 }
 
 geode::Result<> Renderer::start() {
@@ -488,8 +522,6 @@ geode::Result<> Renderer::start() {
     m_encoded = 0;
 
     m_recording = true;
-    m_texture.m_width = m_settings.m_width;
-    m_texture.m_height = m_settings.m_height;
 
     // int linesizes[AV_NUM_DATA_POINTERS] = {ALIGNMENT, ALIGNMENT};
     // m_alignedWidth = m_settings.m_width;
@@ -498,22 +530,20 @@ geode::Result<> Renderer::start() {
     //     m_videoCodecCtx.get(), reinterpret_cast<int*>(&m_alignedWidth),
     //     reinterpret_cast<int*>(&m_alignedHeight), linesizes);
 
-    m_alignedWidth = (m_settings.m_width + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
-    m_alignedHeight = (m_settings.m_height + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+    CCSize renderSize = alignedRenderSize(m_settings);
+    m_alignedWidth = renderSize.width;
+    m_alignedHeight = renderSize.height;
 
     geode::log::info("Initializing capture with aligned size: {}x{}",
                      m_alignedWidth, m_alignedHeight);
     m_texture.m_alignedWidth = m_alignedWidth;
     m_texture.m_alignedHeight = m_alignedHeight;
 
-    auto frameSize = CCDirector::get()->getOpenGLView()->getFrameSize();
-    silentChangeSize(CCSize(m_alignedWidth, m_alignedHeight));
-    resizeShaderLayer(CCSize(m_alignedWidth, m_alignedHeight), frameSize);
-    ShaderLayer* sh = GJBaseGameLayer::get()->m_shaderLayer;
-    m_texture.m_widthOffset = sh->m_targetTextureSizeExtra.width;
-    m_texture.m_heightOffset = sh->m_targetTextureSizeExtra.width;
-    silentChangeSize(frameSize);
+    this->acquireView();
+    resizeShaderLayer(renderSize);
 
+    m_texture.m_windowWidth = m_windowSize.width;
+    m_texture.m_windowHeight = m_windowSize.height;
     m_texture.init(std::move(colorspace));
 
     m_bufferSize = static_cast<size_t>(m_texture.m_colorspace->getBufferSize());
@@ -744,6 +774,7 @@ geode::Result<> Renderer::stop() {
     m_audioCodecCtx.reset();
 
     m_texture.destroy();
+    this->restoreView();
 
     if (m_autoExitLevel->inner()) {
         m_shouldQuit = true;

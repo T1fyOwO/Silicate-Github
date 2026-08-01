@@ -26,9 +26,9 @@ class RenderTexture {
     std::unique_ptr<Colorspace> m_colorspace;
     std::vector<RenderPass> m_passes;
 
-    uint32_t m_width, m_height;
     uint32_t m_alignedWidth, m_alignedHeight;
-    uint32_t m_widthOffset, m_heightOffset;
+    // real window size, only used to fit the preview blit into it
+    uint32_t m_windowWidth, m_windowHeight;
 
     uint32_t m_tex[2];
     uint32_t m_quadVAO, m_quadVBO;

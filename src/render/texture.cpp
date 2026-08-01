@@ -3,6 +3,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/binding/PlayLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <algorithm>
 
 // #include "colorspace/nv12.hpp"
 #include "colorspace/yuv420p.hpp"
@@ -14,17 +15,6 @@
 #endif
 
 using namespace cocos2d;
-
-static void silentChangeSize(CCSize size, float /* wOffset */,
-                             float /* hOffset */) {
-    auto director = CCDirector::sharedDirector();
-    auto view = CCEGLView::sharedOpenGLView();
-    view->CCEGLViewProtocol::setFrameSize(size.width, size.height);
-    director->updateScreenScale(size);
-    director->setViewport();
-    director->setProjection(kCCDirectorProjection2D);
-    glViewport(0, 0, size.width, size.height);
-}
 
 void RenderTexture::init(std::unique_ptr<Colorspace> colorspace) {
 #ifdef SILICATE_PROTECT
@@ -96,12 +86,6 @@ void RenderTexture::init(std::unique_ptr<Colorspace> colorspace) {
 }
 
 void RenderTexture::issue(float fadeThreshold) {
-    auto director = cocos2d::CCDirector::sharedDirector();
-
-    CCSize size = director->getOpenGLView()->getFrameSize();
-    m_width = size.width;
-    m_height = size.height;
-
     const int w = m_issued % RING_SIZE;
     glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[w]);
 
@@ -123,11 +107,6 @@ void RenderTexture::issue(float fadeThreshold) {
 
         if (i == 0) {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            // actually render the scene
-            silentChangeSize(cocos2d::CCSize(pass.m_width, pass.m_height),
-                             m_widthOffset, m_heightOffset);
-
             CCDirector::get()->m_pRunningScene->visit();
         } else {
             glDisable(GL_BLEND);
@@ -165,7 +144,6 @@ void RenderTexture::issue(float fadeThreshold) {
 
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
-    silentChangeSize(cocos2d::CCSize(m_width, m_height), 0, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, m_old_fbo);
 
     glUseProgram(0);
@@ -214,24 +192,35 @@ bool RenderTexture::tryHarvest(uint8_t** outData, bool block) {
 }
 
 void RenderTexture::displayPreview() {
-    CCSize size = CCDirector::sharedDirector()->getOpenGLView()->getFrameSize();
-
     int blend;
     glGetIntegerv(GL_BLEND, &blend);
+    GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
 
     glDisable(GL_BLEND);
-
-    glClearColor(0, 0, 0, 1);
+    glDisable(GL_SCISSOR_TEST);
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, m_passes[0].m_fbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_old_fbo);
 
-    glBlitFramebuffer(m_widthOffset, m_heightOffset, m_alignedWidth,
-                      m_alignedHeight, 0, 0, size.width, size.height,
-                      GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    const float scale =
+        std::min(static_cast<float>(m_windowWidth) / m_alignedWidth,
+                 static_cast<float>(m_windowHeight) / m_alignedHeight);
+    const int width = static_cast<int>(m_alignedWidth * scale);
+    const int height = static_cast<int>(m_alignedHeight * scale);
+    const int x = (static_cast<int>(m_windowWidth) - width) / 2;
+    const int y = (static_cast<int>(m_windowHeight) - height) / 2;
+
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBlitFramebuffer(0, 0, m_alignedWidth, m_alignedHeight, x, y, x + width,
+                      y + height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
 
     if (blend) {
         glEnable(GL_BLEND);
+    }
+
+    if (scissor) {
+        glEnable(GL_SCISSOR_TEST);
     }
 }
 
