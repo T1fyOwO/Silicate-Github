@@ -28,6 +28,9 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
             return PlayLayer::markCheckpoint();
         }
 
+        if (this->m_player1->m_isDead || this->m_player2->m_isDead)
+            return nullptr;
+
         SCOPED_TIMER("createCheckpoint")
         auto cp = createCheckpoint();
         storeCheckpoint(cp);
@@ -608,8 +611,8 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
 
     void destroyPlayer(PlayerObject* player, GameObject* gameObject) {
         auto bot = Bot::get();
-
-        if (!bot->trajectory().hasDied(player)) {
+        // destroyPlayer can be triggered by multiple objects in the same tick
+        if (!bot->trajectory().hasDied(player) && !this->m_player1->m_isDead && !this->m_player2->m_isDead) {
             this->conditionalDestroyPlayer(player, gameObject);
 
             if (bot->updater().m_preventDeath->inner() &&
