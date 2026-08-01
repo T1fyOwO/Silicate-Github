@@ -276,9 +276,11 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
         return;
     }
 
+    int visualFpsFactor = std::max(std::min(Renderer::get()->m_settings.m_visualFps, (int)Bot::get()->updater().getTps()) / Renderer::get()->m_settings.m_fps, 1);
+
     if (auto renderer = Renderer::get();
         renderer->isRecording() && renderer->m_collectAudio) {
-        realDt = renderer->getDt() / ((Bot::get()->updater().m_ssbFix->inner())
+        realDt = renderer->getDt() / visualFpsFactor / ((Bot::get()->updater().m_ssbFix->inner())
                                           ? Bot::get()->updater().getSSB()
                                           : 1.f);
     }
@@ -302,22 +304,26 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
          Renderer::get()->isRecording());
 
     auto startTime = std::chrono::high_resolution_clock::now();
-    if ((m_lockDelta->inner() || useAccLockDelta) && isPlayLayer) {
-        if (this->useFastLockDelta()) {
-            runFastLockDeltaUpdates(realDt, update);
-        } else {
-            runSlowLockDeltaUpdates(realDt, update, calculateSsb);
-        }
-    } else {
-        m_shouldRender = true;
-        if (m_respawnTimer > 0) {
-            m_tpsOverflow = 0.0;
-            pl->m_extraDelta = 0.0;
-            // this->estimatedStepCount = 0;
-            // this->totalStepCount = 0;
-        }
 
-        update(realDt * m_speedhack->inner());
+    for (int i = 0; i < (Renderer::get()->isRecording() ? visualFpsFactor : 1); i++)
+    {
+        if ((m_lockDelta->inner() || useAccLockDelta) && isPlayLayer) {
+            if (this->useFastLockDelta()) {
+                runFastLockDeltaUpdates(realDt, update);
+            } else {
+                runSlowLockDeltaUpdates(realDt, update, calculateSsb);
+            }
+        } else {
+            m_shouldRender = true;
+            if (m_respawnTimer > 0) {
+                m_tpsOverflow = 0.0;
+                pl->m_extraDelta = 0.0;
+                // this->estimatedStepCount = 0;
+                // this->totalStepCount = 0;
+            }
+
+            update(realDt * m_speedhack->inner());
+        }
     }
 
     bool disableLabels =

@@ -45,6 +45,7 @@ struct RendererSettings {
     bool m_firstAttemptPause = false;
     double m_fadeInTime = 1.5;
     double m_fadeOutTime = 1.5;
+    int m_visualFps = 60;
 };
 
 template <>
@@ -57,7 +58,7 @@ struct glz::meta<RendererSettings> {
         "render_args", &T::m_renderArgs, "output_path", hide{&T::m_outputPath},
         "music_volume", &T::m_musicVolume, "sfx_volume", &T::m_sfxVolume,
         "fade_in", &T::m_fadeInTime, "fade_out", &T::m_fadeOutTime,
-        "record_paused", &T::m_firstAttemptPause);
+        "visual_fps", &T::m_visualFps, "record_paused", &T::m_firstAttemptPause);
 };
 
 #define SL_AV_PTR(type) std::unique_ptr<type, std::function<void(type*)>>

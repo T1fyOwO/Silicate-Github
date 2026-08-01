@@ -1388,7 +1388,11 @@ void UIManager::draw() {
                             0.0, 60.0, 0.1, "{:.1f}s");
                 tabby::drag("Fade Out Time", renderer->m_settings.m_fadeOutTime,
                             0.0, 60.0, 0.1, "{:.1f}s");
-
+                            
+                if (m_state.m_showExperimentalFeatures) {
+                    tabby::drag("Visual FPS", renderer->m_settings.m_visualFps, 1, 100000,
+                                1.0f);
+                }
                 tabby::checkbox("Record 1st Attempt Pause",
                                 renderer->m_settings.m_firstAttemptPause);
 
