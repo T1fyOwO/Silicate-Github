@@ -206,6 +206,10 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
             }
 
             return false;
+        } else if (pf.m_loadCheckpoint) {
+            this->m_checkpointArray->addObject(
+                pf.m_storedFrames.back().m_checkpoint);
+            return true;
         } else if (!pf.m_savedCheckpoints.empty()) {
             auto lastCheckpoint = pf.m_savedCheckpoints.back();
             this->m_checkpointArray->addObject(lastCheckpoint.m_checkpoint);
@@ -213,10 +217,6 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
         } else if (pf.m_forcedState) {
             auto check = pf.m_forcedState;
             this->m_checkpointArray->addObject(check->m_checkpoint);
-            return true;
-        } else if (pf.m_loadCheckpoint) {
-            auto check = pf.m_storedFrames.back();
-            this->m_checkpointArray->addObject(check.m_checkpoint);
             return true;
         }
 

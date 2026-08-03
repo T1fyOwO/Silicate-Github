@@ -36,7 +36,9 @@ static void drawPlayerHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
     auto scaled = player->getObjectRect(0.3, 0.3);
 
     if (auto ob = player->getOrientedBox();
-        ob && HB_ENABLED(Type::PlayerRotated) && !(Bot::get()->hitboxes().m_trailEnabled->inner() && !Bot::get()->hitboxes().m_rotatedAbove->inner())) {
+        ob && HB_ENABLED(Type::PlayerRotated) &&
+        !(Bot::get()->hitboxes().m_trailEnabled->inner() &&
+          !Bot::get()->hitboxes().m_rotatedAbove->inner())) {
         node->drawPolygon(
             ob->m_corners.data(), 4, CC_FILL_COLOR(Type::PlayerRotated), width,
             CC_COLOR(Type::PlayerRotated), cocos2d::BorderAlignment::Inside);
@@ -50,12 +52,16 @@ static void drawPlayerHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
                          width, CC_COLOR(Type::PlayerCircle), segments);
     }
 
-    if (HB_ENABLED(Type::Player) && !(Bot::get()->hitboxes().m_trailEnabled->inner() && !Bot::get()->hitboxes().m_playerAbove->inner())) {
+    if (HB_ENABLED(Type::Player) &&
+        !(Bot::get()->hitboxes().m_trailEnabled->inner() &&
+          !Bot::get()->hitboxes().m_playerAbove->inner())) {
         node->drawRect(rect, CC_FILL_COLOR(Type::Player), width,
                        CC_COLOR(Type::Player),
                        cocos2d::BorderAlignment::Inside);
     }
-    if (HB_ENABLED(Type::PlayerInner) && !(Bot::get()->hitboxes().m_trailEnabled->inner() && !Bot::get()->hitboxes().m_playerAbove->inner())) {
+    if (HB_ENABLED(Type::PlayerInner) &&
+        !(Bot::get()->hitboxes().m_trailEnabled->inner() &&
+          !Bot::get()->hitboxes().m_playerAbove->inner())) {
         node->drawRect(scaled, CC_FILL_COLOR(Type::PlayerInner), width,
                        CC_COLOR(Type::PlayerInner),
                        cocos2d::BorderAlignment::Inside);
@@ -293,6 +299,10 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
     if ((object == pl->m_player1 || object == pl->m_player2) ||
         Bot::get()->trajectory().isFakePlayer((PlayerObject*)object)) {
         return;
+    }
+
+    if (isEditor) {
+        object->updateStartValues();
     }
 
     switch (object->m_objectType) {

@@ -276,13 +276,18 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
         return;
     }
 
-    int visualFpsFactor = std::max(std::min(Renderer::get()->m_settings.m_visualFps, (int)Bot::get()->updater().getTps()) / Renderer::get()->m_settings.m_fps, 1);
+    int visualFpsFactor =
+        std::max(std::min(Renderer::get()->m_settings.m_visualFps,
+                          (int)Bot::get()->updater().getTps()) /
+                     Renderer::get()->m_settings.m_fps,
+                 1);
 
     if (auto renderer = Renderer::get();
         renderer->isRecording() && renderer->m_collectAudio) {
-        realDt = renderer->getDt() / visualFpsFactor / ((Bot::get()->updater().m_ssbFix->inner())
-                                          ? Bot::get()->updater().getSSB()
-                                          : 1.f);
+        realDt = renderer->getDt() / visualFpsFactor /
+                 ((Bot::get()->updater().m_ssbFix->inner())
+                      ? Bot::get()->updater().getSSB()
+                      : 1.f);
     }
 
     if (this->isPaused() && !Renderer::get()->isRecording()) {
@@ -305,8 +310,8 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
 
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    for (int i = 0; i < (Renderer::get()->isRecording() ? visualFpsFactor : 1); i++)
-    {
+    for (int i = 0; i < (Renderer::get()->isRecording() ? visualFpsFactor : 1);
+         i++) {
         if ((m_lockDelta->inner() || useAccLockDelta) && isPlayLayer) {
             if (this->useFastLockDelta()) {
                 runFastLockDeltaUpdates(realDt, update);
@@ -440,7 +445,7 @@ bool BotUpdater::useFastLockDelta() {
            Bot::get()->isPlaying() && !Renderer::get()->isRecording();
 }
 
-void BotUpdater::backwardsStep(int n) {
+void BotUpdater::backwardsStep(int n /* = 1 */) {
     m_paused->inner() = true;
 
     if (n <= 0) {
@@ -458,7 +463,7 @@ void BotUpdater::backwardsStep(int n) {
                 bot->practiceFix().dropLastStoredFrame();
             }
 
-            if (bot->practiceFix().m_storedFrames.size() <= 1) {
+            if (bot->practiceFix().m_storedFrames.empty()) {
                 return;
             }
             bot->practiceFix().m_loadCheckpoint = true;
@@ -558,7 +563,7 @@ $execute {
                                                      ACTIONMGR_UPDATE_OFFSET);
 }
 
-static void earlyUpdateMidhook(SafetyHookContext&) {
+static void backstepUpdateMidhook(SafetyHookContext&) {
     Bot* bot = Bot::get();
     if (bot->updater().m_onlyRefresh) return;
 
@@ -611,11 +616,9 @@ static void frameUpdateMidhook(SafetyHookContext&) {
                 int mode = Mode::Player1;
                 mode |=
                     pl->m_player1->m_jumpBuffered ? Mode::Hold : Mode::Release;
-                auto pred = trajectory->simulate(pl, true, mode, false,
-                                                 {
-                                                     .m_bypassConfig = true,
-                                                     .m_maxLength = 3
-                                                 });
+                auto pred = trajectory->simulate(
+                    pl, true, mode, false,
+                    {.m_bypassConfig = true, .m_maxLength = 3});
                 if (pred.score <= 3) {
                     bot->updater().setPaused(true);
                     // bot->updater().breakLoop();
@@ -632,11 +635,9 @@ static void frameUpdateMidhook(SafetyHookContext&) {
                 int mode = Mode::Player2;
                 mode |=
                     pl->m_player2->m_jumpBuffered ? Mode::Hold : Mode::Release;
-                auto pred = trajectory->simulate(pl, false, mode, false,
-                                                 {
-                                                     .m_bypassConfig = true,
-                                                     .m_maxLength = 3
-                                                 });
+                auto pred = trajectory->simulate(
+                    pl, false, mode, false,
+                    {.m_bypassConfig = true, .m_maxLength = 3});
                 if (pred.score <= 3) {
                     bot->updater().setPaused(true);
                     // bot->updater().breakLoop();
@@ -737,8 +738,8 @@ $execute {
                   physStepCountMidhook);
     util::midhook(geode::base::get() + 0x238F6E, "restorePhysDt",
                   restorePhysDtHook);
-    util::midhook(geode::base::get() + 0x237E42, "earlyUpdate",
-                  earlyUpdateMidhook);
+    util::midhook(geode::base::get() + 0x237E42, "backstepUpdate",
+                  backstepUpdateMidhook);
     util::midhook(geode::base::get() + 0x238BAA, "frameUpdate",
                   frameUpdateMidhook);
 
