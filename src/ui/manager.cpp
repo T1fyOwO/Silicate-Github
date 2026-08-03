@@ -1373,9 +1373,12 @@ void UIManager::draw() {
                                   renderer->m_settings.m_codec);
                 tabby::input_text("Extension", "Extension",
                                   renderer->m_settings.m_extension);
-                tabby::drag("After End Time",
+                if (tabby::drag("After End Time",
                             renderer->m_settings.m_afterEndTime, 0.0f, 10000.0f,
-                            1.0f, "{:.2f}s");
+                            1.0f, "{:.2f}s").changed) {
+                                renderer->m_settings.m_fadeOutTime = std::min(
+                                renderer->m_settings.m_fadeOutTime, (double)renderer->m_settings.m_afterEndTime);
+                            }
                 tabby::checkbox("SSB Fix",
                             Bot::get()->updater().m_ssbFix->inner());
 
@@ -1386,8 +1389,11 @@ void UIManager::draw() {
 
                 tabby::drag("Fade In Time", renderer->m_settings.m_fadeInTime,
                             0.0, 60.0, 0.1, "{:.1f}s");
-                tabby::drag("Fade Out Time", renderer->m_settings.m_fadeOutTime,
-                            0.0, 60.0, 0.1, "{:.1f}s");
+                if (tabby::drag("Fade Out Time", renderer->m_settings.m_fadeOutTime,
+                            0.0, 60.0, 0.1, "{:.1f}s").changed) {
+                                renderer->m_settings.m_afterEndTime = std::max(
+                                (float)renderer->m_settings.m_fadeOutTime, renderer->m_settings.m_afterEndTime);
+                            }
                             
                 if (m_state.m_showExperimentalFeatures) {
                     tabby::drag("Visual FPS", renderer->m_settings.m_visualFps, 1, 100000,
