@@ -647,7 +647,7 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
 
     void pauseGame(bool p0) {
         m_gameState.m_pauseCounter = 0;
-
+        Renderer::get()->restoreView();
         PlayLayer::pauseGame(p0);
     }
 

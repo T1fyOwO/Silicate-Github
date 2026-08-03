@@ -210,9 +210,15 @@ void Renderer::acquireView() {
         return;
     }
 
+    CCSize renderSize = alignedRenderSize(m_settings);
+
     m_windowSize = CCDirector::get()->getOpenGLView()->getFrameSize();
     m_viewResized = true;
-    silentChangeSize(alignedRenderSize(m_settings));
+    silentChangeSize(renderSize);
+
+    if (m_recording) {
+        resizeShaderLayer(renderSize);
+    }
 }
 
 void Renderer::reacquireView() {
@@ -553,8 +559,6 @@ geode::Result<> Renderer::start() {
     m_audioFrameCount = 0;
     m_audioBuffer.clear();
 
-    m_audioStream->time_base = m_audioCodecCtx->time_base;
-
     AudioRecorder::get()->init();
     AudioRecorder::get()->attach(m_settings.m_musicVolume,
                                  m_settings.m_sfxVolume);
@@ -699,6 +703,7 @@ geode::Result<> Renderer::writeAudio(std::vector<float>& data, uint64_t pts) {
 
 geode::Result<> Renderer::stop() {
     m_recording = false;
+
     geode::log::info("Detaching audio and stopping all streams...");
     AudioRecorder::get()->detach();
     AudioRecorder::get()->uninit();
