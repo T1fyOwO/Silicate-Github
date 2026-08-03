@@ -91,7 +91,7 @@ void ReplaySystem::save(std::filesystem::path path, bool noOverwrite) {
 
     replay.m_meta.m_build = 81;
     replay.m_meta.m_seed = m_startingSeed;
-    replay.m_meta.m_tps = m_initialTPS;
+    replay.m_meta.m_tps = Bot::get()->updater().getTps();
 
     std::ofstream fd(path, std::ios::binary);
     auto result = replay.write(fd);
