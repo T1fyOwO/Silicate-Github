@@ -276,11 +276,13 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
         return;
     }
 
-    int visualFpsFactor =
-        std::max(std::min(Renderer::get()->m_settings.m_visualFps,
-                          (int)Bot::get()->updater().getTps()) /
-                     Renderer::get()->m_settings.m_fps,
-                 1);
+    int visualFpsFactor = 1;
+    if (Renderer::get()->m_settings.m_fps > 0)
+        visualFpsFactor =
+            std::max(std::min(Renderer::get()->m_settings.m_visualFps,
+                    (int)Bot::get()->updater().getTps()) /
+                    Renderer::get()->m_settings.m_fps,
+                    1);
 
     if (auto renderer = Renderer::get();
         renderer->isRecording() && renderer->m_collectAudio) {
