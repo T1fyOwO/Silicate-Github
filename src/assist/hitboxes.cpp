@@ -525,11 +525,10 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
                 // Collapse consecutive segments that map to the same on-screen
                 // pixel; keeps the trail as dense as the current zoom allows
                 // without overdrawing identical positions.
-                const float SUBPIXEL_FACTOR = 2;
                 const int px = static_cast<int>(std::floor(
-                    (unit.m_rect.getMidX() * scaleX + objX) * SUBPIXEL_FACTOR));
+                (unit.m_rect.getMidX() * scaleX + objX) * m_optimizationFactor->inner()));
                 const int py = static_cast<int>(std::floor(
-                    (unit.m_rect.getMidY() * scaleY + objY) * SUBPIXEL_FACTOR));
+                (unit.m_rect.getMidY() * scaleY + objY) * m_optimizationFactor->inner()));
                 if (hasLast && px == lastPx && py == lastPy) continue;
                 hasLast = true;
                 lastPx = px;
@@ -582,7 +581,7 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
     }
 }
 
-static constexpr size_t TRAIL_MAX_UNITS = 999999;
+static constexpr size_t TRAIL_MAX_UNITS = 676767;
 
 static void appendTrailUnit(std::deque<HitboxTrailUnit>& trail,
                             PlayerObject* player, const cocos2d::CCRect& rect) {

@@ -10,6 +10,7 @@
 #include <tabby.hpp>
 #include <variant>
 #include <widgets/button.hpp>
+#include <widgets/drag.hpp>
 
 #include "Geode/utils/string.hpp"
 #include "assist/autoclicker.hpp"
@@ -867,6 +868,9 @@ void UIManager::draw() {
                                     Bot::get()->hitboxes().m_playerAbove->inner());
                     tabby::checkbox("Rotated Hitbox Above Trail##Hitboxes",
                                     Bot::get()->hitboxes().m_rotatedAbove->inner());
+                    tabby::drag("Trail Optimization Factor##Hitboxes",
+                                Bot::get()->hitboxes().m_optimizationFactor->inner(), 0.f, 100.f,
+                                0.05f, "{:.2f}");
                 }
 
                 tabby::drag("Width##Hitboxes",

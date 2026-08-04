@@ -65,6 +65,8 @@ class Hitboxes {
         "hitboxes.rotated_above", &SLSettings::get()->hitboxes.rotatedAbove);
     SLValuePtr<double> m_width = SLValue<double>::create(
         "hitboxes.width", &SLSettings::get()->hitboxes.width);
+    SLValuePtr<float> m_optimizationFactor = SLValue<float>::create(
+        "hitboxes.optimizationFactor", &SLSettings::get()->hitboxes.optimizationFactor);
 
     void init(GJBaseGameLayer* pl);
 

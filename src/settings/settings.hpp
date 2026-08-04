@@ -124,6 +124,7 @@ class SLSettings {
         bool trailEnabled = false;
         bool playerAbove = true;
         bool rotatedAbove = true;
+        float optimizationFactor = 2.f;
 
         enum Type {
             Player,
