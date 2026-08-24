@@ -503,21 +503,21 @@ static void renderBlurBg(float rounding = 24.0f, float borderSize = 2.5f,
 
     drawList->AddCallback(&preDrawBlurEffect, nullptr);
 
-    ImVec2 origin_pos = ImGui::GetWindowPos();
-    ImVec2 dest_pos = ImGui::GetWindowPos() + ImGui::GetWindowSize();
+    const float edgeInset = borderSize * 0.5f;
+    ImVec2 origin_pos = ImGui::GetWindowPos() + ImVec2(edgeInset, edgeInset);
+    ImVec2 dest_pos = ImGui::GetWindowPos() + ImGui::GetWindowSize() -
+                      ImVec2(edgeInset, edgeInset);
+    const float innerRounding = std::max(0.0f, rounding - edgeInset);
 
-    float origin_uv_x = ImGui::GetWindowPos().x /
-                        ImGuiHookCtx::get().m_blurPass.m_width /
+    float origin_uv_x = origin_pos.x / ImGuiHookCtx::get().m_blurPass.m_width /
                         ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR;
-    float origin_uv_y = (frameSize.height - ImGui::GetWindowPos().y) /
+    float origin_uv_y = (frameSize.height - origin_pos.y) /
                         ImGuiHookCtx::get().m_blurPass.m_height /
                         ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR;
 
-    float dest_uv_x = (ImGui::GetWindowPos().x + ImGui::GetWindowSize().x) /
-                      ImGuiHookCtx::get().m_blurPass.m_width /
+    float dest_uv_x = dest_pos.x / ImGuiHookCtx::get().m_blurPass.m_width /
                       ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR;
-    float dest_uv_y = (frameSize.height - ImGui::GetWindowPos().y -
-                       ImGui::GetWindowSize().y) /
+    float dest_uv_y = (frameSize.height - dest_pos.y) /
                       ImGuiHookCtx::get().m_blurPass.m_height /
                       ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR;
 
@@ -547,18 +547,17 @@ static void renderBlurBg(float rounding = 24.0f, float borderSize = 2.5f,
         ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
         origin_pos, dest_pos, {origin_uv_x, origin_uv_y},
         {dest_uv_x, dest_uv_y}, ImGui::GetColorU32(ImVec4(1.0, 1.0, 1.0, 1.0)),
-        rounding, ImDrawFlags_RoundCornersAll);
+        innerRounding, ImDrawFlags_RoundCornersAll);
 
     ImGui::GetWindowDrawList()->AddRectFilled(
-        ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(),
-        ImGui::GetColorU32(ImVec4(0.1f, 0.1f, 0.1f, bgOpacity)), rounding,
+        origin_pos, dest_pos,
+        ImGui::GetColorU32(ImVec4(0.1f, 0.1f, 0.1f, bgOpacity)), innerRounding,
         ImDrawFlags_RoundCornersAll);
 
     // window border
     ImGui::GetWindowDrawList()->AddRect(
-        ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(),
-        ImGui::GetColorU32(ImVec4(1.0, 1.0, 1.0, 0.1f)), rounding,
-        ImDrawFlags_RoundCornersAll, borderSize);
+        origin_pos, dest_pos, ImGui::GetColorU32(ImVec4(1.0, 1.0, 1.0, 0.1f)),
+        innerRounding, ImDrawFlags_RoundCornersAll, borderSize);
 }
 
 static std::vector<std::string> filterCandidates(
@@ -578,6 +577,138 @@ static std::vector<std::string> filterCandidates(
     }
 
     return filtered;
+}
+
+static void applyNewStyle() {
+    auto& style = ImGui::GetStyle();
+    const float scale = tabby::TabbyGlobalCfg::get().uiScale;
+
+    style.FrameRounding = 8.0f * scale;
+    style.FrameBorderSize = 1.25f * scale;
+    style.FramePadding = ImVec2(18.0f * scale, 7.0f * scale);
+    style.PopupRounding = 14.0f * scale;
+    style.ChildRounding = 20.0f * scale;
+    style.GrabRounding = 8.0f * scale;
+    style.ScrollbarRounding = 10.0f * scale;
+    style.GrabMinSize = 12.0f * scale;
+    style.DisabledAlpha = 0.56f;
+    style.TouchExtraPadding = ImVec2(1.0f * scale, 1.0f * scale);
+    style.ItemSpacing = ImVec2(8.0f * scale, 10.0f * scale);
+    style.ItemInnerSpacing = ImVec2(6.0f * scale, 6.0f * scale);
+
+    auto* colors = style.Colors;
+    colors[ImGuiCol_Text] = ImVec4(0.94f, 0.95f, 0.97f, 1.0f);
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.94f, 0.95f, 0.97f, 0.42f);
+    colors[ImGuiCol_Border] = ImVec4(0.88f, 0.91f, 0.96f, 0.16f);
+    colors[ImGuiCol_Separator] = ImVec4(0.88f, 0.91f, 0.96f, 0.10f);
+    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.88f, 0.91f, 0.96f, 0.16f);
+    colors[ImGuiCol_SeparatorActive] = ImVec4(0.88f, 0.91f, 0.96f, 0.22f);
+
+    colors[ImGuiCol_FrameBg] = ImVec4(0.82f, 0.86f, 0.94f, 0.085f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.86f, 0.90f, 0.98f, 0.14f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.90f, 0.93f, 1.0f, 0.21f);
+
+    colors[ImGuiCol_Button] = ImVec4(0.86f, 0.90f, 0.98f, 0.13f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.88f, 0.92f, 1.0f, 0.20f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.92f, 0.95f, 1.0f, 0.28f);
+
+    colors[ImGuiCol_Header] = ImVec4(0.86f, 0.90f, 0.98f, 0.06f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.88f, 0.92f, 1.0f, 0.10f);
+    colors[ImGuiCol_HeaderActive] = ImVec4(0.90f, 0.94f, 1.0f, 0.14f);
+    colors[ImGuiCol_CheckMark] = ImVec4(0.94f, 0.96f, 1.0f, 0.92f);
+    colors[ImGuiCol_SliderGrab] = ImVec4(0.90f, 0.93f, 1.0f, 0.56f);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.96f, 0.97f, 1.0f, 0.88f);
+    colors[ImGuiCol_TextSelectedBg] = ImVec4(0.72f, 0.82f, 1.0f, 0.22f);
+    colors[ImGuiCol_NavCursor] = ImVec4(0.90f, 0.94f, 1.0f, 0.68f);
+
+    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.88f, 0.91f, 0.96f, 0.24f);
+    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.90f, 0.93f, 1.0f, 0.36f);
+    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.92f, 0.95f, 1.0f, 0.48f);
+}
+
+struct ScopedInset {
+    float m_inset;
+    double m_originalWidgetWidth;
+
+    explicit ScopedInset(double inset = 20.0)
+        : m_inset(
+              static_cast<float>(inset * tabby::TabbyGlobalCfg::get().uiScale)),
+          m_originalWidgetWidth(tabby::TabbyGlobalCfg::get().widgetWidth) {
+        ImGui::Indent(m_inset);
+        tabby::TabbyGlobalCfg::get().widgetWidth -= m_inset;
+    }
+
+    ScopedInset(const ScopedInset&) = delete;
+    ScopedInset& operator=(const ScopedInset&) = delete;
+
+    ~ScopedInset() {
+        tabby::TabbyGlobalCfg::get().widgetWidth = m_originalWidgetWidth;
+        ImGui::Unindent(m_inset);
+    }
+};
+
+template <typename F>
+void animated(const char* id, bool visible, F&& content,
+                        bool inset = true) {
+    ImGui::PushID(id);
+    const ImGuiID progressId = ImGui::GetID("##VisibilityProgress");
+    const ImGuiID heightId = ImGui::GetID("##VisibilityHeight");
+    ImGui::PopID();
+
+    auto* storage = ImGui::GetStateStorage();
+    float progress = storage->GetFloat(progressId, visible ? 1.0f : 0.0f);
+    const float target = visible ? 1.0f : 0.0f;
+    const auto& cfg = tabby::TabbyGlobalCfg::get();
+    const float step = cfg.playAnimations
+                           ? ImGui::GetIO().DeltaTime *
+                                 static_cast<float>(cfg.animationSpeed) / 0.18f
+                           : 1.0f;
+
+    if (progress < target) {
+        progress = std::min(target, progress + step);
+    } else if (progress > target) {
+        progress = std::max(target, progress - step);
+    }
+    storage->SetFloat(progressId, progress);
+
+    if (!visible && progress <= 0.0f) {
+        return;
+    }
+
+    const float eased =
+        visible
+            ? 1.0f - (1.0f - progress) * (1.0f - progress) * (1.0f - progress)
+            : progress * progress * (3.0f - 2.0f * progress);
+    const float startCursorY = ImGui::GetCursorPosY();
+    const ImVec2 startScreenPos = ImGui::GetCursorScreenPos();
+    const float storedHeight =
+        storage->GetFloat(heightId, ImGui::GetFrameHeightWithSpacing() * 3.0f);
+    const ImVec2 windowPos = ImGui::GetWindowPos();
+    const ImVec2 windowSize = ImGui::GetWindowSize();
+
+    ImGui::PushClipRect(ImVec2(windowPos.x, startScreenPos.y),
+                        ImVec2(windowPos.x + windowSize.x,
+                               startScreenPos.y + storedHeight * eased),
+                        true);
+
+    const double originalWidth = cfg.widgetWidth;
+    const float insetWidth = inset ? 20.0f * cfg.uiScale : 0.0f;
+    if (inset) {
+        ImGui::Indent(insetWidth);
+        tabby::TabbyGlobalCfg::get().widgetWidth -= insetWidth;
+    }
+
+    content();
+
+    if (inset) {
+        tabby::TabbyGlobalCfg::get().widgetWidth = originalWidth;
+        ImGui::Unindent(insetWidth);
+    }
+
+    const float fullAdvance = ImGui::GetCursorPosY() - startCursorY;
+    storage->SetFloat(heightId, fullAdvance);
+    ImGui::PopClipRect();
+    ImGui::SetCursorPosY(startCursorY + fullAdvance * eased);
 }
 
 void UIManager::draw() {
@@ -616,6 +747,8 @@ void UIManager::draw() {
     // clip all that start with m_state.m_replayName (case insensitive) (std)
 
     tabby::window("Silicate", [this, bot, popupShaderFn]() {
+        applyNewStyle();
+
         if (m_state.m_useShader->inner()) {
             renderBlurBg(24.0f, 2.5f, true, m_state.m_opacity->inner(), true);
         } else {
@@ -840,11 +973,13 @@ void UIManager::draw() {
                 tabby::checkbox("Seed Override",
                                 Bot::get()->replaySystem().m_overrideSeed);
 
-                if (Bot::get()->replaySystem().m_overrideSeed) {
-                    tabby::drag("Seed",
-                                Bot::get()->replaySystem().m_overriddenSeed,
-                                0ull, std::numeric_limits<uint64_t>::max());
-                }
+                animated(
+                    "SeedOverrideOptions",
+                    Bot::get()->replaySystem().m_overrideSeed, [&]() {
+                        tabby::drag("Seed",
+                                    Bot::get()->replaySystem().m_overriddenSeed,
+                                    0ull, std::numeric_limits<uint64_t>::max());
+                    });
             });
 
             tabby::tab(m_state.m_currentTab, UIState::UITab::Assist, [&]() {
@@ -853,39 +988,58 @@ void UIManager::draw() {
                 tabby::divider(false);
 
                 tabby::text("Hitboxes", m_medium);
+
                 tabby::checkbox("Toggle##Hitboxes",
                                 Bot::get()->hitboxes().m_enabled->inner());
 
-                tabby::checkbox("Show Trail##Hitboxes",
-                                Bot::get()->hitboxes().m_trailEnabled->inner());
+                animated(
+                    "HitboxOptions", Bot::get()->hitboxes().m_enabled->inner(),
+                    [&]() {
+                        tabby::checkbox(
+                            "Show Trail##Hitboxes",
+                            Bot::get()->hitboxes().m_trailEnabled->inner());
 
-                tabby::drag("Width##Hitboxes",
-                            Bot::get()->hitboxes().m_width->inner(), 0.0, 1.0,
-                            0.02f, "{:.2f}");
+                        tabby::drag("Width##Hitboxes",
+                                    Bot::get()->hitboxes().m_width->inner(),
+                                    0.0, 1.0, 0.02f, "{:.2f}");
 
-                tabby::dropdown("Hitbox##Selector", m_state.m_hitboxState,
-                                m_state.m_hitboxState.selectedIndex,
-                                popupShaderFn);
+                        tabby::dropdown(
+                            "Hitbox##Selector", m_state.m_hitboxState,
+                            m_state.m_hitboxState.selectedIndex, popupShaderFn);
 
-                {
-                    auto& h = m_state.m_hitboxCategories[m_state.m_hitboxState
-                                                             .selectedIndex];
+                        {
+                            ScopedInset inset;
+                            auto& h =
+                                m_state.m_hitboxCategories[m_state.m_hitboxState
+                                                               .selectedIndex];
 
-                    auto& category = SLSettings::get()->hitboxes.categories[h];
+                            auto& category =
+                                SLSettings::get()->hitboxes.categories[h];
 
-                    tabby::checkbox("Enabled##SpecificHitbox",
-                                    category.enabled);
+                            tabby::checkbox("Enabled##SpecificHitbox",
+                                            category.enabled);
 
-                    m_state.m_hitboxColorState.colors = category.colors;
+                            animated(
+                                "SpecificHitboxOptions", category.enabled,
+                                [&]() {
+                                    m_state.m_hitboxColorState.colors =
+                                        category.colors;
 
-                    tabby::color("Color##SpecificHitbox",
-                                 m_state.m_hitboxColorState, popupShaderFn);
+                                    tabby::color("Color##SpecificHitbox",
+                                                 m_state.m_hitboxColorState,
+                                                 popupShaderFn);
 
-                    category.colors = m_state.m_hitboxColorState.colors;
+                                    category.colors =
+                                        m_state.m_hitboxColorState.colors;
 
-                    tabby::drag("Fill Opacity##SpecificHitbox",
-                                category.fillOpacity, 0.0, 1.0, 0.01, "{:.2f}");
-                };
+                                    tabby::drag("Fill Opacity##SpecificHitbox",
+                                                category.fillOpacity, 0.0, 1.0,
+                                                0.01, "{:.2f}");
+                                },
+                                false);
+                        }
+                    },
+                    false);
 
                 tabby::divider();
 
@@ -897,18 +1051,23 @@ void UIManager::draw() {
                     Bot::get()->updater().m_layoutMode->notifyChange();
                 }
 
-                tabby::checkbox("Use Regular Background##LayoutMode",
-                                Bot::get()->updater().m_useRegularBg->inner());
+                animated(
+                    "LayoutOptions",
+                    Bot::get()->updater().m_layoutMode->inner(), [&]() {
+                        tabby::checkbox(
+                            "Use Regular Background##LayoutMode",
+                            Bot::get()->updater().m_useRegularBg->inner());
 
-                tabby::color("Background Color##LayoutMode",
-                             m_state.m_bgColorState, popupShaderFn);
-                tabby::color("Ground Color##LayoutMode",
-                             m_state.m_groundColorState, popupShaderFn);
+                        tabby::color("Background Color##LayoutMode",
+                                     m_state.m_bgColorState, popupShaderFn);
+                        tabby::color("Ground Color##LayoutMode",
+                                     m_state.m_groundColorState, popupShaderFn);
 
-                SLSettings::get()->layoutBgColor =
-                    m_state.m_bgColorState.colors;
-                SLSettings::get()->layoutGroundColor =
-                    m_state.m_groundColorState.colors;
+                        SLSettings::get()->layoutBgColor =
+                            m_state.m_bgColorState.colors;
+                        SLSettings::get()->layoutGroundColor =
+                            m_state.m_groundColorState.colors;
+                    });
 
                 tabby::divider();
 
@@ -918,10 +1077,15 @@ void UIManager::draw() {
                 tabby::checkbox("Enabled##Noclip",
                                 Bot::get()->updater().m_noclip->inner());
 
-                tabby::dropdown("Player##Noclip", m_state.m_noclipState,
-                                *reinterpret_cast<int*>(
-                                    &Bot::get()->updater().m_noclipType),
-                                popupShaderFn);
+                animated(
+                    "NoclipOptions", Bot::get()->updater().m_noclip->inner(),
+                    [&]() {
+                        tabby::dropdown(
+                            "Player##Noclip", m_state.m_noclipState,
+                            *reinterpret_cast<int*>(
+                                &Bot::get()->updater().m_noclipType),
+                            popupShaderFn);
+                    });
 
                 tabby::divider();
 
@@ -930,47 +1094,64 @@ void UIManager::draw() {
                 tabby::checkbox(
                     "Enabled##Trajectory",
                     Bot::get()->trajectory().m_state.m_enabled->inner());
-                tabby::drag("Width##Trajectory",
+                animated(
+                    "TrajectoryOptions",
+                    Bot::get()->trajectory().m_state.m_enabled->inner(),
+                    [&]() {
+                        tabby::drag(
+                            "Width##Trajectory",
                             Bot::get()->trajectory().m_state.m_width->inner(),
                             0.0, 1.0, 0.01f, "{:.2f}");
-                tabby::drag("Length##Trajectory",
+                        tabby::drag(
+                            "Length##Trajectory",
                             Bot::get()->trajectory().m_state.m_length->inner(),
                             0.0, 5.0, 0.01f, "{:.2f}s");
 
-                tabby::dropdown(
-                    "Trajectory##Selector", m_state.m_trajectoryState,
-                    m_state.m_trajectoryState.selectedIndex, popupShaderFn);
-                {
-                    auto& t = m_state.m_categories[m_state.m_trajectoryState
-                                                       .selectedIndex];
+                        tabby::dropdown("Trajectory##Selector",
+                                        m_state.m_trajectoryState,
+                                        m_state.m_trajectoryState.selectedIndex,
+                                        popupShaderFn);
+                        {
+                            ScopedInset inset;
+                            auto& t =
+                                m_state.m_categories[m_state.m_trajectoryState
+                                                         .selectedIndex];
 
-                    auto& category =
-                        SLSettings::get()->trajectory.categories[t];
+                            auto& category =
+                                SLSettings::get()->trajectory.categories[t];
 
-                    tabby::checkbox("Enabled##SpecificTrajectory",
-                                    category.enabled);
+                            tabby::checkbox("Enabled##SpecificTrajectory",
+                                            category.enabled);
 
-                    m_state.m_trajectoryColorState.colors = category.colors;
+                            animated(
+                                "SpecificTrajectoryOptions", category.enabled,
+                                [&]() {
+                                    m_state.m_trajectoryColorState.colors =
+                                        category.colors;
 
-                    tabby::color("Color##SpecificTrajectory",
-                                 m_state.m_trajectoryColorState, popupShaderFn);
+                                    tabby::color("Color##SpecificTrajectory",
+                                                 m_state.m_trajectoryColorState,
+                                                 popupShaderFn);
 
-                    category.colors = m_state.m_trajectoryColorState.colors;
-                };
+                                    category.colors =
+                                        m_state.m_trajectoryColorState.colors;
+                                },
+                                false);
+                        }
+                    },
+                    false);
 
                 tabby::divider();
 
                 tabby::text("Backstepping", m_medium);
 
-                tabby::fraction(
-                    2.0,
-                    [&]() {
-                        tabby::checkbox(
-                            "Backwards Stepping",
-                            Bot::get()->updater().m_backwardsStepping->inner());
+                tabby::checkbox(
+                    "Backwards Stepping",
+                    Bot::get()->updater().m_backwardsStepping->inner());
 
-                        tabby::spacer(16.0);
-
+                animated(
+                    "BacksteppingOptions",
+                    Bot::get()->updater().m_backwardsStepping->inner(), [&]() {
                         if (tabby::drag("Steps",
                                         Bot::get()
                                             ->practiceFix()
@@ -981,8 +1162,7 @@ void UIManager::draw() {
                                 ->practiceFix()
                                 .m_maxStoredFrames->notifyChange();
                         }
-                    },
-                    16.0);
+                    });
 
                 // tabby::checkbox("Run Full Updates",
                 // Bot::get()->updater().m_fullGamePrediction->inner());
@@ -993,17 +1173,22 @@ void UIManager::draw() {
 
                 tabby::checkbox("Enabled##Autoclicker",
                                 Bot::get()->autoclicker().m_enabled->inner());
-                tabby::drag("Interval##Autoclicker",
-                            Bot::get()->autoclicker().m_frequency, 0,
-                            std::numeric_limits<int>::max(), 1.0f,
-                            "{} Frame(s)");
-                tabby::checkbox("Swift Clicks",
-                                Bot::get()->autoclicker().m_performSwifts);
-                tabby::dropdown("Player##Autoclicker",
-                                m_state.m_autoclickerState,
-                                *reinterpret_cast<int*>(
-                                    &Bot::get()->autoclicker().m_player),
-                                popupShaderFn);
+                animated(
+                    "AutoclickerOptions",
+                    Bot::get()->autoclicker().m_enabled->inner(), [&]() {
+                        tabby::drag("Interval##Autoclicker",
+                                    Bot::get()->autoclicker().m_frequency, 0,
+                                    std::numeric_limits<int>::max(), 1.0f,
+                                    "{} Frame(s)");
+                        tabby::checkbox(
+                            "Swift Clicks",
+                            Bot::get()->autoclicker().m_performSwifts);
+                        tabby::dropdown(
+                            "Player##Autoclicker", m_state.m_autoclickerState,
+                            *reinterpret_cast<int*>(
+                                &Bot::get()->autoclicker().m_player),
+                            popupShaderFn);
+                    });
 
                 tabby::divider();
 
@@ -1011,8 +1196,13 @@ void UIManager::draw() {
 
                 tabby::checkbox("Mirror Inputs",
                                 Bot::get()->replaySystem().m_mirrorInputs);
-                tabby::checkbox("Mirror Inverted",
-                                Bot::get()->replaySystem().m_mirrorInverted);
+                animated(
+                    "MirrorOptions", Bot::get()->replaySystem().m_mirrorInputs,
+                    [&]() {
+                        tabby::checkbox(
+                            "Mirror Inverted",
+                            Bot::get()->replaySystem().m_mirrorInverted);
+                    });
 
                 tabby::checkbox("Maintain Gravity",
                                 Bot::get()->replaySystem().m_maintainGravity);
@@ -1650,7 +1840,7 @@ void UIManager::draw() {
                 //     tabby::text(
                 //         "It's recommended to restart the game after "
                 //         "changing "
-                //         "UI scale.");
+                //         "UI Scale.");
                 //     ImGui::PopStyleColor();
                 // }
 
@@ -1677,14 +1867,16 @@ void UIManager::draw() {
                     rs.m_autosaveAtInterval->notifyChange();
                 }
 
-                if (rs.m_autosaveAtInterval->inner()) {
-                    if (tabby::drag("Auto-Backup Interval",
-                                    rs.m_autosaveInterval->inner(), 1.0, 3600.0,
-                                    1.0, "{:.0f}s")
-                            .changed) {
-                        rs.m_autosaveInterval->notifyChange();
-                    }
-                }
+                animated(
+                    "AutoBackupOptions", rs.m_autosaveAtInterval->inner(),
+                    [&]() {
+                        if (tabby::drag("Auto-Backup Interval",
+                                        rs.m_autosaveInterval->inner(), 1.0,
+                                        3600.0, 1.0, "{:.0f}s")
+                                .changed) {
+                            rs.m_autosaveInterval->notifyChange();
+                        }
+                    });
 
                 tabby::divider();
 
@@ -1693,45 +1885,63 @@ void UIManager::draw() {
                 tabby::checkbox("Display Labels",
                                 Bot::get()->labels().m_globalEnabled);
 
-                tabby::dropdown("Label##Selector", m_state.m_labelState,
-                                m_state.m_labelState.selectedIndex,
-                                popupShaderFn);
+                animated(
+                    "GlobalLabelOptions", Bot::get()->labels().m_globalEnabled,
+                    [&]() {
+                        tabby::dropdown("Label##Selector", m_state.m_labelState,
+                                        m_state.m_labelState.selectedIndex,
+                                        popupShaderFn);
 
-                auto& label = Bot::get()
-                                  ->labels()
-                                  .m_labels[m_state.m_labelState.selectedIndex]
-                                  .m_config;
+                        ScopedInset inset;
+                        auto& label =
+                            Bot::get()
+                                ->labels()
+                                .m_labels[m_state.m_labelState.selectedIndex]
+                                .m_config;
 
-                if (tabby::checkbox("Enabled##Label", label.m_enabled)
-                        .pressed) {
-                    bot->labels().m_requiresRefresh = true;
-                }
+                        if (tabby::checkbox("Enabled##Label", label.m_enabled)
+                                .pressed) {
+                            bot->labels().m_requiresRefresh = true;
+                        }
 
-                if (tabby::drag("Opacity##Label", label.m_opacity, 0.0f, 1.0f,
-                                0.01f, "{:.2f}x")
-                        .changed) {
-                    bot->labels().m_requiresRefresh = true;
-                }
+                        animated(
+                            "SpecificLabelOptions", label.m_enabled,
+                            [&]() {
+                                if (tabby::drag("Opacity##Label",
+                                                label.m_opacity, 0.0f, 1.0f,
+                                                0.01f, "{:.2f}x")
+                                        .changed) {
+                                    bot->labels().m_requiresRefresh = true;
+                                }
 
-                if (tabby::drag("Size##Label", label.m_scale, 0.0f, 100.0f,
-                                1.0f, "{:.2f}x")
-                        .changed) {
-                    bot->labels().m_requiresRefresh = true;
-                }
+                                if (tabby::drag("Size##Label", label.m_scale,
+                                                0.0f, 100.0f, 1.0f, "{:.2f}x")
+                                        .changed) {
+                                    bot->labels().m_requiresRefresh = true;
+                                }
 
-                if (tabby::dropdown("Font##Label", m_state.m_labelFontsState,
-                                    *reinterpret_cast<int*>(&label.m_font),
-                                    popupShaderFn)
-                        .changed) {
-                    bot->labels().m_requiresRefresh = true;
-                }
+                                if (tabby::dropdown(
+                                        "Font##Label",
+                                        m_state.m_labelFontsState,
+                                        *reinterpret_cast<int*>(&label.m_font),
+                                        popupShaderFn)
+                                        .changed) {
+                                    bot->labels().m_requiresRefresh = true;
+                                }
 
-                if (tabby::dropdown(
-                        "Position##Label", m_state.m_labelPositionsState,
-                        *reinterpret_cast<int*>(&label.m_anchor), popupShaderFn)
-                        .changed) {
-                    bot->labels().m_requiresRefresh = true;
-                }
+                                if (tabby::dropdown(
+                                        "Position##Label",
+                                        m_state.m_labelPositionsState,
+                                        *reinterpret_cast<int*>(
+                                            &label.m_anchor),
+                                        popupShaderFn)
+                                        .changed) {
+                                    bot->labels().m_requiresRefresh = true;
+                                }
+                            },
+                            false);
+                    },
+                    false);
 
                 tabby::divider();
 
@@ -1756,23 +1966,36 @@ void UIManager::draw() {
                 tabby::checkbox("Real Time",
                                 bot->updater().m_realTime->inner());
 
-                if (!bot->updater().m_realTime->inner()) {
-                    tabby::checkbox("Dynamic UPR",
-                                    bot->updater().m_dynamicUpr->inner());
+                animated(
+                    "NonRealtimeOptions", !bot->updater().m_realTime->inner(),
+                    [&]() {
+                        tabby::checkbox("Dynamic UPR",
+                                        bot->updater().m_dynamicUpr->inner());
 
-                    if (bot->updater().m_dynamicUpr->inner()) {
-                        tabby::drag("Target FPS",
-                                    bot->updater().m_fpsTarget->inner(), 1.0,
-                                    480.0, 1.0f, "{:.0f} FPS");
-                    } else {
-                        tabby::drag("Max UPR", bot->updater().m_maxUPR->inner(),
-                                    1u, 1000000u, 1.0f);
+                        animated(
+                            "DynamicUprOptions",
+                            bot->updater().m_dynamicUpr->inner(),
+                            [&]() {
+                                tabby::drag("Target FPS",
+                                            bot->updater().m_fpsTarget->inner(),
+                                            1.0, 480.0, 1.0f, "{:.0f} FPS");
+                            },
+                            false);
+                        animated(
+                            "StaticUprOptions",
+                            !bot->updater().m_dynamicUpr->inner(),
+                            [&]() {
+                                tabby::drag("Max UPR",
+                                            bot->updater().m_maxUPR->inner(),
+                                            1u, 1000000u, 1.0f);
 
-                        tabby::checkbox(
-                            "Use Visual Updates",
-                            bot->updater().m_useVisualUpdates->inner());
-                    }
-                }
+                                tabby::checkbox(
+                                    "Use Visual Updates",
+                                    bot->updater().m_useVisualUpdates->inner());
+                            },
+                            false);
+                    },
+                    false);
 
                 tabby::divider();
 
