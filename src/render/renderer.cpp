@@ -168,48 +168,93 @@ static void silentChangeSize(CCSize size) {
     glViewport(0, 0, size.width, size.height);
 }
 
-static void resizeShaderLayer(CCSize size, CCSize original) {
-    ShaderLayer* sh = GJBaseGameLayer::get()->m_shaderLayer;
-    sh->m_screenSize = size;
-    sh->m_scaleFactor = size.height / CCDirector::get()->getWinSize().height;
-    sh->m_aspectRatio = size.width / size.height;
+static void resizeShaderLayer(CCSize size) {
+    auto gjbgl = GJBaseGameLayer::get();
+    if (!gjbgl || !gjbgl->m_shaderLayer) {
+        return;
+    }
 
+    ShaderLayer* sh = gjbgl->m_shaderLayer;
     auto winSize = CCDirector::get()->getWinSize();
-    float baseAspectRatio = original.aspect();
+
+    sh->m_screenSize = size;
+    sh->m_scaleFactor = size.height / winSize.height;
+    sh->m_aspectRatio = size.width / size.height;
 
     float csf = CCDirector::get()->getContentScaleFactor();
     CCDirector::get()->setContentScaleFactor(1.0);
     sh->m_renderTexture->release();
-    sh->m_renderTexture = nullptr;
     sh->m_renderTexture = CCRenderTexture::create(
-        size.width / sh->m_aspectRatio * baseAspectRatio, size.height,
-        kCCTexture2DPixelFormat_RGBA8888);
+        size.width, size.height, kCCTexture2DPixelFormat_RGBA8888);
     sh->m_renderTexture->retain();
     CCDirector::get()->setContentScaleFactor(csf);
     sh->m_sprite->setTexture(sh->m_renderTexture->getSprite()->getTexture());
     sh->m_textureContentSize = sh->m_sprite->getTexture()->getContentSize();
     sh->m_targetTextureSize = size;
     sh->m_targetTextureSizeExtra = CCSize(0.0f, 0.0f);
-    if (baseAspectRatio > sh->m_aspectRatio) {
-        float calculatedWidth =
-            size.width / sh->m_aspectRatio * baseAspectRatio;
-        sh->m_targetTextureSizeExtra =
-            cocos2d::CCSize{calculatedWidth - size.width, 0.0};
-    } else if (baseAspectRatio < sh->m_aspectRatio) {
-        float calculatedHeight =
-            size.height / sh->m_aspectRatio * baseAspectRatio;
-        sh->m_targetTextureSizeExtra =
-            cocos2d::CCSize{0.0, calculatedHeight - size.height};
-    }
-    sh->m_sprite->setTextureRect({-1.0f + sh->m_targetTextureSizeExtra.width,
-                                  -1.0f + sh->m_targetTextureSizeExtra.height,
-                                  size.width + 2.0f, size.height + 2.0f});
+    sh->m_sprite->setTextureRect(
+        {-1.0f, -1.0f, size.width + 2.0f, size.height + 2.0f});
     sh->m_state.m_textureScaleX = size.width / winSize.width;
     sh->m_state.m_textureScaleY = size.height / winSize.height;
 }
 
+// kinda does nothing since ALIGNMENT=1, if we were to align then maybe it would
+// do something but i don't wanna copypaste ts everywhere
+static CCSize alignedRenderSize(const RendererSettings& settings) {
+    return CCSize((settings.m_width + ALIGNMENT - 1) & ~(ALIGNMENT - 1),
+                  (settings.m_height + ALIGNMENT - 1) & ~(ALIGNMENT - 1));
+}
+
+void Renderer::acquireView() {
+    if (m_viewResized) {
+        return;
+    }
+
+    CCSize renderSize = alignedRenderSize(m_settings);
+
+    m_windowSize = CCDirector::get()->getOpenGLView()->getFrameSize();
+    m_viewResized = true;
+    silentChangeSize(renderSize);
+
+    if (m_recording) {
+        resizeShaderLayer(renderSize);
+    }
+}
+
+void Renderer::reacquireView() {
+    if (!m_viewResized) {
+        return;
+    }
+
+    CCSize frameSize = CCDirector::get()->getOpenGLView()->getFrameSize();
+    if (frameSize.equals(m_windowSize)) {
+        return;
+    }
+
+    m_windowSize = frameSize;
+    silentChangeSize(alignedRenderSize(m_settings));
+
+    m_texture.m_windowWidth = m_windowSize.width;
+    m_texture.m_windowHeight = m_windowSize.height;
+}
+
+void Renderer::restoreView() {
+    if (!m_viewResized) {
+        return;
+    }
+
+    m_viewResized = false;
+    silentChangeSize(m_windowSize);
+    resizeShaderLayer(m_windowSize);
+}
+
 geode::Result<> Renderer::start() {
     geode::log::info("Starting renderer");
+
+    this->finishStop();
+    if (m_recording || m_recordThread.joinable()) {
+        return geode::Err("A render is already in progress");
+    }
 
     FMODAudioEngine::get()->m_system->getSoftwareFormat(&m_sampleRate, nullptr,
                                                         &m_channels);
@@ -483,8 +528,6 @@ geode::Result<> Renderer::start() {
     m_encoded = 0;
 
     m_recording = true;
-    m_texture.m_width = m_settings.m_width;
-    m_texture.m_height = m_settings.m_height;
 
     // int linesizes[AV_NUM_DATA_POINTERS] = {ALIGNMENT, ALIGNMENT};
     // m_alignedWidth = m_settings.m_width;
@@ -493,22 +536,20 @@ geode::Result<> Renderer::start() {
     //     m_videoCodecCtx.get(), reinterpret_cast<int*>(&m_alignedWidth),
     //     reinterpret_cast<int*>(&m_alignedHeight), linesizes);
 
-    m_alignedWidth = (m_settings.m_width + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
-    m_alignedHeight = (m_settings.m_height + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+    CCSize renderSize = alignedRenderSize(m_settings);
+    m_alignedWidth = renderSize.width;
+    m_alignedHeight = renderSize.height;
 
     geode::log::info("Initializing capture with aligned size: {}x{}",
                      m_alignedWidth, m_alignedHeight);
     m_texture.m_alignedWidth = m_alignedWidth;
     m_texture.m_alignedHeight = m_alignedHeight;
 
-    auto frameSize = CCDirector::get()->getOpenGLView()->getFrameSize();
-    silentChangeSize(CCSize(m_alignedWidth, m_alignedHeight));
-    resizeShaderLayer(CCSize(m_alignedWidth, m_alignedHeight), frameSize);
-    ShaderLayer* sh = GJBaseGameLayer::get()->m_shaderLayer;
-    m_texture.m_widthOffset = sh->m_targetTextureSizeExtra.width;
-    m_texture.m_heightOffset = sh->m_targetTextureSizeExtra.width;
-    silentChangeSize(frameSize);
+    this->acquireView();
+    resizeShaderLayer(renderSize);
 
+    m_texture.m_windowWidth = m_windowSize.width;
+    m_texture.m_windowHeight = m_windowSize.height;
     m_texture.init(std::move(colorspace));
 
     m_bufferSize = static_cast<size_t>(m_texture.m_colorspace->getBufferSize());
@@ -518,13 +559,12 @@ geode::Result<> Renderer::start() {
     m_audioFrameCount = 0;
     m_audioBuffer.clear();
 
-    m_audioStream->time_base = m_audioCodecCtx->time_base;
-
     AudioRecorder::get()->init();
     AudioRecorder::get()->attach(m_settings.m_musicVolume,
                                  m_settings.m_sfxVolume);
 
-    std::thread(&Renderer::recordLoop, this).detach();
+    m_readyToKill.store(false, std::memory_order_relaxed);
+    m_recordThread = std::thread(&Renderer::recordLoop, this);
 
     return geode::Ok();
 }
@@ -663,61 +703,54 @@ geode::Result<> Renderer::writeAudio(std::vector<float>& data, uint64_t pts) {
 
 geode::Result<> Renderer::stop() {
     m_recording = false;
+
     geode::log::info("Detaching audio and stopping all streams...");
     AudioRecorder::get()->detach();
     AudioRecorder::get()->uninit();
 
-    if (m_pkt && m_videoCodecCtx && m_formatCtx && m_videoStream) {
-        ff->avcodec_send_frame(m_videoCodecCtx.get(), nullptr);
-        while (ff->avcodec_receive_packet(m_videoCodecCtx.get(), m_pkt.get()) ==
-               0) {
-            ff->av_packet_rescale_ts(m_pkt.get(), m_videoCodecCtx->time_base,
-                                     m_videoStream->time_base);
-            m_pkt->stream_index = m_videoStream->index;
+    std::string error;
+
+    auto flush = [&](AVCodecContext* codecCtx, AVPacket* pkt,
+                     AVStream* stream) {
+        if (!m_formatCtx || !codecCtx || !pkt || !stream) {
+            return;
+        }
+
+        ff->avcodec_send_frame(codecCtx, nullptr);
+        while (ff->avcodec_receive_packet(codecCtx, pkt) == 0) {
+            ff->av_packet_rescale_ts(pkt, codecCtx->time_base,
+                                     stream->time_base);
+            pkt->stream_index = stream->index;
 
             int ret;
             {
                 std::lock_guard<std::mutex> lock(m_muxMutex);
-                ret = ff->av_interleaved_write_frame(m_formatCtx, m_pkt.get());
+                ret = ff->av_interleaved_write_frame(m_formatCtx, pkt);
             }
+
+            ff->av_packet_unref(pkt);
+
             if (ret < 0) {
-                return geode::Err("Failed to write frame");
+                if (error.empty()) {
+                    error = fmt::format("Failed to write frame: {}", ret);
+                }
+                break;
             }
-
-            ff->av_packet_unref(m_pkt.get());
         }
-    }
+    };
 
-    if (m_audioPkt && m_audioCodecCtx && m_formatCtx && m_audioStream) {
-        ff->avcodec_send_frame(m_audioCodecCtx.get(), nullptr);
-        while (ff->avcodec_receive_packet(m_audioCodecCtx.get(),
-                                          m_audioPkt.get()) == 0) {
-            ff->av_packet_rescale_ts(m_audioPkt.get(),
-                                     m_audioCodecCtx->time_base,
-                                     m_audioStream->time_base);
-            m_audioPkt->stream_index = m_audioStream->index;
+    flush(m_videoCodecCtx.get(), m_pkt.get(), m_videoStream);
+    flush(m_audioCodecCtx.get(), m_audioPkt.get(), m_audioStream);
 
-            int ret;
-            {
-                std::lock_guard<std::mutex> lock(m_muxMutex);
-                ret = ff->av_interleaved_write_frame(m_formatCtx,
-                                                     m_audioPkt.get());
-            }
-            if (ret < 0) {
-                return geode::Err("Failed to write frame");
-            }
-
-            ff->av_packet_unref(m_audioPkt.get());
+    if (m_formatCtx) {
+        int ret;
+        {
+            std::lock_guard<std::mutex> lock(m_muxMutex);
+            ret = ff->av_write_trailer(m_formatCtx);
         }
-    }
-
-    int ret;
-    {
-        std::lock_guard<std::mutex> lock(m_muxMutex);
-        ret = ff->av_write_trailer(m_formatCtx);
-    }
-    if (ret < 0) {
-        return geode::Err("Failed to write trailer");
+        if (ret < 0 && error.empty()) {
+            error = fmt::format("Failed to write trailer: {}", ret);
+        }
     }
 
     geode::log::info("Rendering has stopped. Cleaning up");
@@ -727,22 +760,36 @@ geode::Result<> Renderer::stop() {
         m_frame->data[1] = nullptr;
     }
 
-    ff->avio_close(m_formatCtx->pb);
-    ff->swr_free(&m_swrCtx);
+    if (m_formatCtx) {
+        if (m_formatCtx->pb) {
+            ff->avio_close(m_formatCtx->pb);
+        }
 
-    // streams are owned by the format context, so this frees them too
-    ff->avformat_free_context(m_formatCtx);
-    m_formatCtx = nullptr;
+        // streams are owned by the format context, so this frees them too
+        ff->avformat_free_context(m_formatCtx);
+        m_formatCtx = nullptr;
+    }
+
     m_videoStream = nullptr;
     m_audioStream = nullptr;
 
+    ff->swr_free(&m_swrCtx);
+
+    m_videoCodecCtx.reset();
+    m_audioCodecCtx.reset();
+
     m_texture.destroy();
+    this->restoreView();
 
     if (m_autoExitLevel->inner()) {
         m_shouldQuit = true;
     }
 
     geode::log::info("Renderer cleanup done");
+
+    if (!error.empty()) {
+        return geode::Err(error);
+    }
 
     return geode::Ok();
 }
@@ -791,6 +838,24 @@ void Renderer::recordLoop() {
         m_encoded.fetch_add(1, std::memory_order_release);
     }
 
+    {
+        std::lock_guard<std::mutex> lock(m_recordMutex);
+        m_recording = false;
+    }
+
+    m_readyToKill.store(true, std::memory_order_release);
+    geode::log::info("Encode thread killed");
+}
+
+void Renderer::finishStop() {
+    if (!m_readyToKill.exchange(false, std::memory_order_acquire)) {
+        return;
+    }
+
+    if (m_recordThread.joinable()) {
+        m_recordThread.join();
+    }
+
     auto stopResult = this->stop();
     if (stopResult.isErr()) {
         geode::log::error("Failed to stop recording: {}",
@@ -808,7 +873,8 @@ void Renderer::enqueueFrame(uint8_t* data, int64_t pts) {
 
 void Renderer::harvestCompleted() {
     uint8_t* data = nullptr;
-    while (m_texture.tryHarvest(&data, /* block */ false)) {
+    while (!m_ptsQueue.empty() &&
+           m_texture.tryHarvest(&data, /* block */ false)) {
         int64_t pts = m_ptsQueue.front();
         m_ptsQueue.pop_front();
         this->enqueueFrame(data, pts);
@@ -817,7 +883,8 @@ void Renderer::harvestCompleted() {
 
 void Renderer::flushPending() {
     uint8_t* data = nullptr;
-    while (m_texture.mappedCount() < m_texture.issuedCount()) {
+    while (!m_ptsQueue.empty() &&
+           m_texture.mappedCount() < m_texture.issuedCount()) {
         if (!m_texture.tryHarvest(&data, /* block */ true)) {
             break;
         }

@@ -122,6 +122,9 @@ class SLSettings {
     struct HitboxSettings {
         double width = 0.5;
         bool trailEnabled = false;
+        bool playerAbove = true;
+        bool rotatedAbove = true;
+        float optimizationFactor = 2.f;
 
         enum Type {
             Player,
@@ -192,6 +195,7 @@ struct glz::meta<SLSettings> {
         "video_name_template", &T::videoNameTemplate,
         "preset", &T::lastLoadedPreset,
         "preview_audio", &T::previewAudio,
+        "auto_exit_level", &T::autoExitLevel,
         "autoclicker_enabled", hide{&T::autoclickerEnabled},
 
         "ssb_fix", &T::scrollSpeedBugFix,

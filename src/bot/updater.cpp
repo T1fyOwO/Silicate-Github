@@ -14,6 +14,7 @@
 #include "assist/cps.hpp"
 #include "assist/hitboxes.hpp"
 #include "bot.hpp"
+#include "bot/updater.hpp"
 #include "checkpoint/fix.hpp"
 #include "label/label.hpp"
 #include "render/renderer.hpp"
@@ -23,6 +24,35 @@
 #include "util/profile.hpp"
 
 using namespace geode::prelude;
+
+float BotUpdater::getSSB() {
+    const static float speeds[5] = {251.1601f, 311.5801f, 387.4201f, 468.0002f,
+                                    576.0002f};
+
+    int playerSpeed = 1;
+
+    if (GJBaseGameLayer::get()->m_player1->m_playerSpeed == 0.7f)
+        playerSpeed = 0;
+    else if (GJBaseGameLayer::get()->m_player1->m_playerSpeed == 0.9f)
+        playerSpeed = 1;
+    else if (GJBaseGameLayer::get()->m_player1->m_playerSpeed == 1.1f)
+        playerSpeed = 2;
+    else if (GJBaseGameLayer::get()->m_player1->m_playerSpeed == 1.3f)
+        playerSpeed = 3;
+    else if (GJBaseGameLayer::get()->m_player1->m_playerSpeed == 1.6f)
+        playerSpeed = 4;
+
+    // formula given by ij9
+    float f = GJBaseGameLayer::get()->m_player1->getPositionX();
+    float a = speeds[playerSpeed] / Bot::get()->updater().getTps();
+    float c = (f + a) - f;
+    float factor = c / a;
+
+    if (factor <= 0 || GJBaseGameLayer::get()->m_levelEndAnimationStarted)
+        factor = 1;
+
+    return factor;
+}
 
 float BotUpdater::getTimeWarp() {
     if (auto pl = PlayLayer::get(); pl) {
@@ -118,6 +148,7 @@ static void runFastLockDeltaUpdates(float realDt,
             updater.getPhysicsDt());
 
         if (updater.estimatedStepCount >= 1) {
+            updater.m_shouldRender = true;
             update(realDt * updater.m_speedhack->inner());
         }
     } else {
@@ -135,12 +166,16 @@ static void runFastLockDeltaUpdates(float realDt,
 
             if (safeSteps > 0) {
                 updater.estimatedStepCount = safeSteps;
+                if (steps - safeSteps == 0) {
+                    updater.m_shouldRender = true;
+                }
                 update(updater.getPhysicsDt() * safeSteps);
                 steps -= safeSteps;
             }
 
             if (steps > 0) {
                 updater.estimatedStepCount = 1;
+                updater.m_shouldRender = true;
                 update(realDt * updater.m_speedhack->inner());
                 steps -= 1;
             }
@@ -241,9 +276,20 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
         return;
     }
 
+    int visualFpsFactor = 1;
+    if (Renderer::get()->m_settings.m_fps > 0)
+        visualFpsFactor =
+            std::max(std::min(Renderer::get()->m_settings.m_visualFps,
+                    (int)Bot::get()->updater().getTps()) /
+                    Renderer::get()->m_settings.m_fps,
+                    1);
+
     if (auto renderer = Renderer::get();
         renderer->isRecording() && renderer->m_collectAudio) {
-        realDt = renderer->getDt();
+        realDt = renderer->getDt() / visualFpsFactor /
+                 ((Bot::get()->updater().m_ssbFix->inner())
+                      ? Bot::get()->updater().getSSB()
+                      : 1.f);
     }
 
     if (this->isPaused() && !Renderer::get()->isRecording()) {
@@ -256,13 +302,8 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
         }
     }
 
+    // cleanup later (or never since we're doing v2 anyways)
     bool calculateSsb = false;
-    if (isPlayLayer) {
-        calculateSsb = !((PlayLayer*)pl)->m_isPaused &&
-                       !((PlayLayer*)pl)->m_hasCompletedLevel &&
-                       pl->m_started && !pl->m_isPlatformer &&
-                       m_ssbFix->inner() && Renderer::get()->isRecording();
-    }
 
     bool useAccLockDelta =
         m_lockDelta->inner() &&
@@ -270,22 +311,26 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
          Renderer::get()->isRecording());
 
     auto startTime = std::chrono::high_resolution_clock::now();
-    if ((m_lockDelta->inner() || useAccLockDelta) && isPlayLayer) {
-        if (this->useFastLockDelta()) {
-            runFastLockDeltaUpdates(realDt, update);
-        } else {
-            runSlowLockDeltaUpdates(realDt, update, calculateSsb);
-        }
-    } else {
-        m_shouldRender = true;
-        if (m_respawnTimer > 0) {
-            m_tpsOverflow = 0.0;
-            pl->m_extraDelta = 0.0;
-            // this->estimatedStepCount = 0;
-            // this->totalStepCount = 0;
-        }
 
-        update(realDt * m_speedhack->inner());
+    for (int i = 0; i < (Renderer::get()->isRecording() ? visualFpsFactor : 1);
+         i++) {
+        if ((m_lockDelta->inner() || useAccLockDelta) && isPlayLayer) {
+            if (this->useFastLockDelta()) {
+                runFastLockDeltaUpdates(realDt, update);
+            } else {
+                runSlowLockDeltaUpdates(realDt, update, calculateSsb);
+            }
+        } else {
+            m_shouldRender = true;
+            if (m_respawnTimer > 0) {
+                m_tpsOverflow = 0.0;
+                pl->m_extraDelta = 0.0;
+                // this->estimatedStepCount = 0;
+                // this->totalStepCount = 0;
+            }
+
+            update(realDt * m_speedhack->inner());
+        }
     }
 
     bool disableLabels =
@@ -402,7 +447,7 @@ bool BotUpdater::useFastLockDelta() {
            Bot::get()->isPlaying() && !Renderer::get()->isRecording();
 }
 
-void BotUpdater::backwardsStep(int n) {
+void BotUpdater::backwardsStep(int n /* = 1 */) {
     m_paused->inner() = true;
 
     if (n <= 0) {
@@ -420,7 +465,7 @@ void BotUpdater::backwardsStep(int n) {
                 bot->practiceFix().dropLastStoredFrame();
             }
 
-            if (bot->practiceFix().m_storedFrames.size() <= 1) {
+            if (bot->practiceFix().m_storedFrames.empty()) {
                 return;
             }
             bot->practiceFix().m_loadCheckpoint = true;
@@ -520,7 +565,7 @@ $execute {
                                                      ACTIONMGR_UPDATE_OFFSET);
 }
 
-static void earlyUpdateMidhook(SafetyHookContext&) {
+static void backstepUpdateMidhook(SafetyHookContext&) {
     Bot* bot = Bot::get();
     if (bot->updater().m_onlyRefresh) return;
 
@@ -573,11 +618,10 @@ static void frameUpdateMidhook(SafetyHookContext&) {
                 int mode = Mode::Player1;
                 mode |=
                     pl->m_player1->m_jumpBuffered ? Mode::Hold : Mode::Release;
-                auto pred = trajectory->simulate(pl, true, mode, false,
-                                                 {
-                                                     .m_bypassConfig = true,
-                                                 });
-                if (pred.score <= 2) {
+                auto pred = trajectory->simulate(
+                    pl, true, mode, false,
+                    {.m_bypassConfig = true, .m_maxLength = 3});
+                if (pred.score <= 3) {
                     bot->updater().setPaused(true);
                     // bot->updater().breakLoop();
                 }
@@ -593,11 +637,10 @@ static void frameUpdateMidhook(SafetyHookContext&) {
                 int mode = Mode::Player2;
                 mode |=
                     pl->m_player2->m_jumpBuffered ? Mode::Hold : Mode::Release;
-                auto pred = trajectory->simulate(pl, false, mode, false,
-                                                 {
-                                                     .m_bypassConfig = true,
-                                                 });
-                if (pred.score <= 2) {
+                auto pred = trajectory->simulate(
+                    pl, false, mode, false,
+                    {.m_bypassConfig = true, .m_maxLength = 3});
+                if (pred.score <= 3) {
                     bot->updater().setPaused(true);
                     // bot->updater().breakLoop();
                 }
@@ -697,8 +740,8 @@ $execute {
                   physStepCountMidhook);
     util::midhook(geode::base::get() + 0x238F6E, "restorePhysDt",
                   restorePhysDtHook);
-    util::midhook(geode::base::get() + 0x237E42, "earlyUpdate",
-                  earlyUpdateMidhook);
+    util::midhook(geode::base::get() + 0x237E42, "backstepUpdate",
+                  backstepUpdateMidhook);
     util::midhook(geode::base::get() + 0x238BAA, "frameUpdate",
                   frameUpdateMidhook);
 

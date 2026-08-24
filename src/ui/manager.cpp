@@ -10,6 +10,7 @@
 #include <tabby.hpp>
 #include <variant>
 #include <widgets/button.hpp>
+#include <widgets/drag.hpp>
 
 #include "Geode/utils/string.hpp"
 #include "assist/autoclicker.hpp"
@@ -812,11 +813,13 @@ void UIManager::draw() {
                     m_state.m_currentTab = UIState::UITab::Render;
                 }
 
-                if (tabby::button_selector(
-                        "\uf0fe    Keybinds##Tab",
-                        m_state.m_currentTab == UIState::UITab::Keybinds)
-                        .pressed) {
-                    m_state.m_currentTab = UIState::UITab::Keybinds;
+                if (m_state.m_showExperimentalFeatures) {
+                    if (tabby::button_selector(
+                            "\uf0fe    Keybinds##Tab",
+                            m_state.m_currentTab == UIState::UITab::Keybinds)
+                            .pressed) {
+                        m_state.m_currentTab = UIState::UITab::Keybinds;
+                    }
                 }
 
                 if (tabby::button_selector(
@@ -999,9 +1002,20 @@ void UIManager::draw() {
                             "Show Trail##Hitboxes",
                             Bot::get()->hitboxes().m_trailEnabled->inner());
 
+                        if (Bot::get()->hitboxes().m_trailEnabled->inner())
+                        {
+                            tabby::checkbox("Player Hitbox Above Trail##Hitboxes",
+                                            Bot::get()->hitboxes().m_playerAbove->inner());
+                            tabby::checkbox("Rotated Hitbox Above Trail##Hitboxes",
+                                            Bot::get()->hitboxes().m_rotatedAbove->inner());
+                            tabby::drag("Trail Optimization Factor##Hitboxes",
+                                        Bot::get()->hitboxes().m_optimizationFactor->inner(), 0.f, 100.f,
+                                        0.05f, "{:.2f}");
+                        }
+
                         tabby::drag("Width##Hitboxes",
-                                    Bot::get()->hitboxes().m_width->inner(),
-                                    0.0, 1.0, 0.02f, "{:.2f}");
+                                    Bot::get()->hitboxes().m_width->inner(), 0.0, 1.0,
+                                    0.02f, "{:.2f}");
 
                         tabby::dropdown(
                             "Hitbox##Selector", m_state.m_hitboxState,
@@ -1553,13 +1567,14 @@ void UIManager::draw() {
                                   renderer->m_settings.m_codec);
                 tabby::input_text("Extension", "Extension",
                                   renderer->m_settings.m_extension);
-                tabby::drag("After End Time",
+                if (tabby::drag("After End Time",
                             renderer->m_settings.m_afterEndTime, 0.0f, 10000.0f,
-                            1.0f, "{:.2f}s");
-                if (m_state.m_showExperimentalFeatures) {
-                    tabby::checkbox("SSB Fix",
-                                    Bot::get()->updater().m_ssbFix->inner());
-                }
+                            1.0f, "{:.2f}s").changed) {
+                                renderer->m_settings.m_fadeOutTime = std::min(
+                                renderer->m_settings.m_fadeOutTime, (double)renderer->m_settings.m_afterEndTime);
+                            }
+                tabby::checkbox("SSB Fix",
+                            Bot::get()->updater().m_ssbFix->inner());
 
                 tabby::drag("Music Volume", renderer->m_settings.m_musicVolume,
                             0.0, 1.0, 0.01, "{:.2f}");
@@ -1568,9 +1583,16 @@ void UIManager::draw() {
 
                 tabby::drag("Fade In Time", renderer->m_settings.m_fadeInTime,
                             0.0, 60.0, 0.1, "{:.1f}s");
-                tabby::drag("Fade Out Time", renderer->m_settings.m_fadeOutTime,
-                            0.0, 60.0, 0.1, "{:.1f}s");
+                if (tabby::drag("Fade Out Time", renderer->m_settings.m_fadeOutTime,
+                            0.0, 60.0, 0.1, "{:.1f}s").changed) {
+                                renderer->m_settings.m_afterEndTime = std::max(
+                                (float)renderer->m_settings.m_fadeOutTime, renderer->m_settings.m_afterEndTime);
+                            }
 
+                if (m_state.m_showExperimentalFeatures) {
+                    tabby::drag("Visual FPS", renderer->m_settings.m_visualFps, 1, 100000,
+                                1.0f);
+                }
                 tabby::checkbox("Record 1st Attempt Pause",
                                 renderer->m_settings.m_firstAttemptPause);
 
@@ -2008,6 +2030,9 @@ void UIManager::draw() {
                 if (tabby::button("Disable Bot").pressed) {
                     Bot::get()->m_enabled->inner() = false;
                     Bot::get()->m_enabled->notifyChange();
+                    FMOD::ChannelGroup* master;
+                    FMODAudioEngine::get()->m_system->getMasterChannelGroup(&master);
+                    master->setPitch(1.0);
                 }
 
                 tabby::checkbox("Experimental Features",

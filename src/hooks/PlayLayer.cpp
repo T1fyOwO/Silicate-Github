@@ -28,6 +28,9 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
             return PlayLayer::markCheckpoint();
         }
 
+        if (this->m_player1->m_isDead || this->m_player2->m_isDead)
+            return nullptr;
+
         SCOPED_TIMER("createCheckpoint")
         auto cp = createCheckpoint();
         storeCheckpoint(cp);
@@ -203,6 +206,10 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
             }
 
             return false;
+        } else if (pf.m_loadCheckpoint) {
+            this->m_checkpointArray->addObject(
+                pf.m_storedFrames.back().m_checkpoint);
+            return true;
         } else if (!pf.m_savedCheckpoints.empty()) {
             auto lastCheckpoint = pf.m_savedCheckpoints.back();
             this->m_checkpointArray->addObject(lastCheckpoint.m_checkpoint);
@@ -210,10 +217,6 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
         } else if (pf.m_forcedState) {
             auto check = pf.m_forcedState;
             this->m_checkpointArray->addObject(check->m_checkpoint);
-            return true;
-        } else if (pf.m_loadCheckpoint) {
-            auto check = pf.m_storedFrames.back();
-            this->m_checkpointArray->addObject(check.m_checkpoint);
             return true;
         }
 
@@ -489,6 +492,8 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
             Renderer::get()->signalStop();
         }
 
+        Renderer::get()->restoreView();
+
         auto bot = Bot::get();
 
         // Deallocate trajectory and hitbox nodes
@@ -569,6 +574,7 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
         if (renderer->m_shouldStart) {
             FMODAudioEngine::sharedEngine()->stopAllMusic(true);
             FMODAudioEngine::sharedEngine()->stopAllEffects();
+            renderer->acquireView();
         }
 
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
@@ -608,8 +614,9 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
 
     void destroyPlayer(PlayerObject* player, GameObject* gameObject) {
         auto bot = Bot::get();
-
-        if (!bot->trajectory().hasDied(player)) {
+        // destroyPlayer can be triggered by multiple objects in the same tick
+        if (!bot->trajectory().hasDied(player) && !this->m_player1->m_isDead &&
+            !this->m_player2->m_isDead) {
             this->conditionalDestroyPlayer(player, gameObject);
 
             if (bot->updater().m_preventDeath->inner() &&
@@ -640,7 +647,7 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
 
     void pauseGame(bool p0) {
         m_gameState.m_pauseCounter = 0;
-
+        Renderer::get()->restoreView();
         PlayLayer::pauseGame(p0);
     }
 
@@ -651,6 +658,11 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
         }
 
         PlayLayer::updateVisibility(dt);
+
+        if (!updater.m_shouldRender) {
+            return;
+        }
+
         if (updater.m_layoutMode->inner()) {
             constexpr std::array<int, 5> colors = {1000, 1001, 1009, 1013,
                                                    1014};
@@ -713,7 +725,41 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
         Renderer* renderer = Renderer::get();
         renderer->startIfQueued();
 
-        return PlayLayer::setupHasCompleted();
+        PlayLayer::setupHasCompleted();
+
+        bot->hitboxes().raiseGameUI(this);
+    }
+
+    void showCompleteText() {
+        auto bot = Bot::get();
+        if (!bot->isEnabled()) {
+            return PlayLayer::showCompleteText();
+        }
+
+        std::unordered_set<CCNode*> before;
+        this->collectChildren(before);
+
+        PlayLayer::showCompleteText();
+
+        std::unordered_set<CCNode*> after;
+        this->collectChildren(after);
+
+        for (CCNode* child : after) {
+            if (!before.contains(child)) {
+                bot->hitboxes().raiseAbove(child);
+            }
+        }
+    }
+
+    void collectChildren(std::unordered_set<CCNode*>& out) {
+        CCArray* children = this->getChildren();
+        if (!children) return;
+
+        for (unsigned int i = 0; i < children->count(); i++) {
+            if (auto child = static_cast<CCNode*>(children->objectAtIndex(i))) {
+                out.insert(child);
+            }
+        }
     }
 
     void addObject(GameObject* obj) {

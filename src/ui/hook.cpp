@@ -207,7 +207,7 @@ vec4 sampleReflection(vec2 texCoord, float displacement) {
 
 float roundedRectSDF(vec2 point, vec2 center, vec2 halfSize, float radius) {
     vec2 q = abs(point - center) - halfSize + radius;
-    
+
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
 }
 
@@ -494,9 +494,6 @@ void ImGuiHookCtx::sampleBlurPostprocess() {
 }
 
 void ImGuiHookCtx::postSampleBlur() {
-    cocos2d::CCSize frameSize =
-        CCDirector::sharedDirector()->getOpenGLView()->getFrameSize();
-
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_oldFbo);
     glUseProgram(m_oldProgram);
     glBindTexture(GL_TEXTURE_2D, m_oldTex);
@@ -512,7 +509,7 @@ void ImGuiHookCtx::postSampleBlur() {
     glDisable(GL_PRIMITIVE_RESTART);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    glViewport(0, 0, frameSize.width, frameSize.height);
+    glViewport(0, 0, m_width, m_height);
 }
 
 void ImGuiHookCtx::draw() {

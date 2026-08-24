@@ -11,6 +11,8 @@ using namespace geode::prelude;
 
 struct SLCCDirector : Modify<SLCCDirector, CCDirector> {
     void drawScene() {
+        Renderer::get()->finishStop();
+
         if (!Bot::get()->isEnabled()) {
             return CCDirector::drawScene();
         }
@@ -22,6 +24,7 @@ struct SLCCDirector : Modify<SLCCDirector, CCDirector> {
 
         auto playLayer = PlayLayer::get();
         if (!playLayer) {
+            renderer->restoreView();
             return CCDirector::drawScene();
         }
 
@@ -29,6 +32,8 @@ struct SLCCDirector : Modify<SLCCDirector, CCDirector> {
             (playLayer->m_started ||
              renderer->m_settings.m_firstAttemptPause)) {
             float dt = Renderer::get()->getDt();
+
+            renderer->acquireView();
 
             if (!renderer->tryBeginFrame()) {
                 renderer->displayPreview();
@@ -75,6 +80,8 @@ struct SLCCDirector : Modify<SLCCDirector, CCDirector> {
         //     return;
         // }
         //
+        renderer->restoreView();
+
         CCDirector::drawScene();
         Bot::get()->updater().runFrozenTick();
     }

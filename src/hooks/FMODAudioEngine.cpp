@@ -63,6 +63,8 @@ void FMOD_System_update(FMOD::System* self) {
         processedSamples += bufferLength;
     }
 
+    audio->syncMixFormat();
+
     const auto frameSize = 1024;  // just assume 1024 for now
     const auto totalFrameSize = frameSize * audio->m_channels;
 
@@ -82,7 +84,8 @@ void FMOD_System_update(FMOD::System* self) {
         audio->m_buffer.erase(audio->m_buffer.begin(),
                               audio->m_buffer.begin() + totalFrameSize);
 
-        audio->m_time = (double)audio->m_index++ *
+        audio->m_index++;
+        audio->m_time = (double)audio->m_index *
                         ((double)frameSize / (double)audio->m_sampleRate);
     }
 }

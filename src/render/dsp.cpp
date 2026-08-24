@@ -27,6 +27,7 @@ FMOD_RESULT F_CALLBACK AudioRecorder::writeCallback(FMOD_DSP_STATE*,
                inChannels, *outChannels);
 
     recorder->m_lastCollectedLength = length;
+    recorder->m_mixedChannels.store(inChannels, std::memory_order_relaxed);
     recorder->haltWithData(inBuffer, length * inChannels);
 
     std::memset(outBuffer, 0, length * inChannels * sizeof(float));
@@ -122,6 +123,16 @@ void AudioRecorder::attach(double musicVolume, double sfxVolume) {
     engine->setBackgroundMusicVolume(musicVolume);
 
     engine->m_system->setOutput(FMOD_OUTPUTTYPE_NOSOUND_NRT);
+
+    int postRate = 0, postChannels = 0;
+    engine->m_system->getSoftwareFormat(&postRate, nullptr, &postChannels);
+    if (postRate != m_sampleRate || postChannels != m_channels) {
+        geode::log::error(
+            "FMOD software format changed: {}Hz x{} "
+            "-> {}Hz x{}. The encoder is configured for {}Hz, so audio will "
+            "desync! ",
+            m_sampleRate, m_channels, postRate, postChannels, m_sampleRate);
+    }
 
     if (m_audioPreview->inner()) {
         startMonitor();
@@ -226,6 +237,21 @@ float AudioRecorder::calculateTime() {
                                                         &channels);
 
     return (float)m_buffer.size() / ((float)sampleRate * (float)channels);
+}
+
+void AudioRecorder::syncMixFormat() {
+    const int mixed = m_mixedChannels.load(std::memory_order_relaxed);
+    if (mixed <= 0 || mixed == m_channels) {
+        return;
+    }
+
+    geode::log::warn(
+        "FMOD is mixing {} channels but the software format reported {} - the "
+        "format is read before the output switches to NRT. Using {}.",
+        mixed, m_channels, mixed);
+
+    m_channels = mixed;
+    Renderer::get()->m_channels = mixed;
 }
 
 void AudioRecorder::unpause() {

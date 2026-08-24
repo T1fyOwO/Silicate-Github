@@ -125,6 +125,11 @@ void PracticeFix::applyCheckpoint(SavedCheckpoint& cp) {
 void PracticeFix::saveState(CheckpointObject* obj, uint64_t attemptStartFrame) {
     auto checkpoint = createCheckpoint(obj, attemptStartFrame);
 
+    uint64_t frame = Bot::get()->updater().getFrame();
+    if (!m_storedFrames.empty() && m_storedFrames.back().m_frame == frame) {
+        return;
+    }
+
     while (m_storedFrames.size() >= m_maxStoredFrames->inner()) {
         m_storedFrames.front().m_checkpoint->release();
         m_storedFrames.pop_front();
@@ -142,7 +147,7 @@ void PracticeFix::clearStoredFrames() {
 
 bool PracticeFix::canRestoreState() {
     if (!PlayLayer::get()) return false;
-    if (m_storedFrames.size() < 2) return false;
+    if (m_storedFrames.empty()) return false;
 
     return true;
 }
@@ -155,19 +160,20 @@ void PracticeFix::resetWithState(const SavedCheckpoint& state) {
 
 void PracticeFix::restorePreviousFrame(
     std::function<void(CheckpointObject*)> loadFn) {
-    if (m_storedFrames.size() < 2) return;
+    if (m_storedFrames.empty()) return;
 
-    if (!m_hasDiedNormally) {
-        this->dropLastStoredFrame();
-    }
+    SavedCheckpoint checkpoint = std::move(m_storedFrames.back());
+    m_storedFrames.pop_back();
 
-    auto& checkpoint = m_storedFrames.back();
     loadFn(checkpoint.m_checkpoint);
     applyCheckpoint(checkpoint);
+
+    if (checkpoint.m_checkpoint) {
+        checkpoint.m_checkpoint->release();
+    }
 }
 
 void PracticeFix::dropLastStoredFrame() {
-    if (m_storedFrames.empty()) return;
     m_storedFrames.back().m_checkpoint->release();
     m_storedFrames.pop_back();
 }
@@ -241,18 +247,17 @@ void PracticeFix::updatePlatformerInputs(
 [[maybe_unused]] static std::optional<slc::Action> findLastInputUnused(
     const std::vector<slc::Action>& inputs, uint32_t frame, PlayerButton btn,
     bool p2) {
-    const auto& last =
-        std::find_if(inputs.rbegin(), inputs.rend(),
-                     [frame, btn, p2](const slc::Action& input) {
-                         if (input.m_frame < frame &&
-                             static_cast<int>(input.m_type) ==
-                                 static_cast<int>(btn) &&
-                             input.m_player2 == p2) {
-                             return true;
-                         }
+    const auto& last = std::find_if(
+        inputs.rbegin(), inputs.rend(),
+        [frame, btn, p2](const slc::Action& input) {
+            if (input.m_frame < frame &&
+                static_cast<int>(input.m_type) == static_cast<int>(btn) &&
+                input.m_player2 == p2) {
+                return true;
+            }
 
-                         return false;
-                     });
+            return false;
+        });
 
     if (last == inputs.rend()) {
         return std::nullopt;

@@ -1,6 +1,9 @@
 #include "hitboxes.hpp"
 
 #include <Geode/Geode.hpp>
+#include <Geode/binding/EditorUI.hpp>
+#include <Geode/binding/LevelEditorLayer.hpp>
+#include <Geode/binding/PlayLayer.hpp>
 
 #include "Geode/cocos/draw_nodes/CCDrawNode.h"
 #include "bot/bot.hpp"
@@ -33,7 +36,9 @@ static void drawPlayerHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
     auto scaled = player->getObjectRect(0.3, 0.3);
 
     if (auto ob = player->getOrientedBox();
-        ob && HB_ENABLED(Type::PlayerRotated)) {
+        ob && HB_ENABLED(Type::PlayerRotated) &&
+        !(Bot::get()->hitboxes().m_trailEnabled->inner() &&
+          !Bot::get()->hitboxes().m_rotatedAbove->inner())) {
         node->drawPolygon(
             ob->m_corners.data(), 4, CC_FILL_COLOR(Type::PlayerRotated), width,
             CC_COLOR(Type::PlayerRotated), cocos2d::BorderAlignment::Inside);
@@ -47,12 +52,16 @@ static void drawPlayerHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
                          width, CC_COLOR(Type::PlayerCircle), segments);
     }
 
-    if (HB_ENABLED(Type::Player)) {
+    if (HB_ENABLED(Type::Player) &&
+        !(Bot::get()->hitboxes().m_trailEnabled->inner() &&
+          !Bot::get()->hitboxes().m_playerAbove->inner())) {
         node->drawRect(rect, CC_FILL_COLOR(Type::Player), width,
                        CC_COLOR(Type::Player),
                        cocos2d::BorderAlignment::Inside);
     }
-    if (HB_ENABLED(Type::PlayerInner)) {
+    if (HB_ENABLED(Type::PlayerInner) &&
+        !(Bot::get()->hitboxes().m_trailEnabled->inner() &&
+          !Bot::get()->hitboxes().m_playerAbove->inner())) {
         node->drawRect(scaled, CC_FILL_COLOR(Type::PlayerInner), width,
                        CC_COLOR(Type::PlayerInner),
                        cocos2d::BorderAlignment::Inside);
@@ -125,6 +134,15 @@ static void syncToObjectLayer(cocos2d::CCNode* node, cocos2d::CCNode* layer) {
     node->ignoreAnchorPointForPosition(layer->isIgnoreAnchorPointForPosition());
 }
 
+static int containerZOrder(GJBaseGameLayer* pl) {
+    if (auto lel = geode::cast::typeinfo_cast<LevelEditorLayer*>(pl);
+        lel && lel->m_editorUI) {
+        return lel->m_editorUI->getZOrder() - 1;
+    }
+
+    return (pl->m_uiLayer ? pl->m_uiLayer->getZOrder() : 101) + 1;
+}
+
 void Hitboxes::init(GJBaseGameLayer* pl) {
     if (m_initialized) {
         this->destroy();  // probably worth it to just recreate
@@ -166,13 +184,48 @@ void Hitboxes::init(GJBaseGameLayer* pl) {
         return;
     }
 
-    // m_uiLayer is added to the game layer at z order 101, so this keeps the
-    // hitboxes above every gameplay layer
-    const int zOrder =
-        (pl->m_uiLayer ? pl->m_uiLayer->getZOrder() : 101) + 10000;
-    pl->addChild(m_container, zOrder);
+    pl->addChild(m_container, containerZOrder(pl));
 
     m_initialized = true;
+    this->raiseGameUI(pl);
+}
+
+static cocos2d::CCNode* ancestorUnder(cocos2d::CCNode* node,
+                                      cocos2d::CCNode* parent) {
+    for (auto n = node; n; n = n->getParent()) {
+        if (n->getParent() == parent) return n;
+    }
+
+    return nullptr;
+}
+
+void Hitboxes::raiseGameUI(GJBaseGameLayer* pl) {
+    if (!m_initialized || !m_container) return;
+
+    auto play = geode::cast::typeinfo_cast<PlayLayer*>(pl);
+    if (!play) return;
+
+    if (!play->m_progressBar) {
+        return;
+    }
+
+    const int zOrder = m_container->getZOrder();
+
+    auto bar = ancestorUnder(play->m_progressBar, play);
+    auto label = ancestorUnder(play->m_percentageLabel, play);
+
+    if (bar == play->m_uiLayer || label == play->m_uiLayer) {
+        return;
+    }
+
+    if (bar) bar->setZOrder(zOrder + 1);
+    if (label) label->setZOrder(zOrder + 2);
+}
+
+void Hitboxes::raiseAbove(cocos2d::CCNode* node) {
+    if (!m_initialized || !m_container || !node) return;
+
+    node->setZOrder(m_container->getZOrder() + 1);
 }
 
 static void iterateObjects(GJBaseGameLayer* pl,
@@ -248,6 +301,10 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
         return;
     }
 
+    if (isEditor) {
+        object->updateStartValues();
+    }
+
     switch (object->m_objectType) {
         default: {
             if (object->hasBeenActivatedByPlayer(pl->m_player1) &&
@@ -277,26 +334,36 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
             bool boxOffsetCalculated = object->m_boxOffsetCalculated;
 
             ResolvedHBCategory const* cat = &hb.interactable;
-            if (auto ro = geode::cast::typeinfo_cast<RingObject*>(object); ro) {
+            if (auto ro = geode::cast::typeinfo_cast<RingObject*>(object);
+                ro && hb.interactableActive.enabled) {
                 if (pl->m_player1->m_touchingRings->containsObject(object) ||
                     pl->m_player2->m_touchingRings->containsObject(object)) {
                     cat = &hb.interactableActive;
                 }
             }
 
-            if (object->getObjectRect().intersectsRect(
-                    pl->m_player1->getObjectRect()) ||
-                object->getObjectRect().intersectsRect(
-                    pl->m_player2->getObjectRect())) {
-                cat = &hb.interactableActive;
-            }
-
             if (auto ob =
                     isEditor ? object->getOrientedBox() : object->m_orientedBox;
                 ob) {
+                if (ob->overlaps(pl->m_player1->getOrientedBox()) ||
+                    ob->overlaps(pl->m_player2->getOrientedBox())) {
+                    if (hb.interactableActive.enabled) {
+                        cat = &hb.interactableActive;
+                    }
+                }
+
                 node->drawPolygon(ob->m_corners.data(), 4, cat->fill, width,
                                   cat->line, cocos2d::BorderAlignment::Inside);
             } else {
+                if (object->getObjectRect().intersectsRect(
+                        pl->m_player1->getObjectRect()) ||
+                    object->getObjectRect().intersectsRect(
+                        pl->m_player2->getObjectRect())) {
+                    if (hb.interactableActive.enabled) {
+                        cat = &hb.interactableActive;
+                    }
+                }
+
                 node->drawRect(object->getObjectRect(), cat->fill, width,
                                cat->line, cocos2d::BorderAlignment::Inside);
             }
@@ -458,11 +525,10 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
                 // Collapse consecutive segments that map to the same on-screen
                 // pixel; keeps the trail as dense as the current zoom allows
                 // without overdrawing identical positions.
-                const float SUBPIXEL_FACTOR = 3;
                 const int px = static_cast<int>(std::floor(
-                    (unit.m_rect.getMidX() * scaleX + objX) * SUBPIXEL_FACTOR));
+                (unit.m_rect.getMidX() * scaleX + objX) * m_optimizationFactor->inner()));
                 const int py = static_cast<int>(std::floor(
-                    (unit.m_rect.getMidY() * scaleY + objY) * SUBPIXEL_FACTOR));
+                (unit.m_rect.getMidY() * scaleY + objY) * m_optimizationFactor->inner()));
                 if (hasLast && px == lastPx && py == lastPy) continue;
                 hasLast = true;
                 lastPx = px;
@@ -515,7 +581,7 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
     }
 }
 
-static constexpr size_t TRAIL_MAX_UNITS = 69420;
+static constexpr size_t TRAIL_MAX_UNITS = 676767;
 
 static void appendTrailUnit(std::deque<HitboxTrailUnit>& trail,
                             PlayerObject* player, const cocos2d::CCRect& rect) {

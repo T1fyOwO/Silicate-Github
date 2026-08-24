@@ -653,11 +653,38 @@ void triggerObject(EffectGameObject* object, GJBaseGameLayer* pl,
         case 2900: {
             RotateGameplayGameObject* rotateObj =
                 (RotateGameplayGameObject*)object;
-            player->rotateGameplay(
-                rotateObj->m_moveDirection, rotateObj->m_groundDirection,
-                rotateObj->m_editVelocity, rotateObj->m_velocityModX,
-                rotateObj->m_velocityModY, rotateObj->m_overrideVelocity,
-                rotateObj->m_dontSlide);
+
+            if (rotateObj->m_changeChannel) {
+                pl->m_gameState.m_currentChannel = rotateObj->m_targetChannelID;
+                pl->m_gameState
+                    .m_spawnChannelRelated1[rotateObj->m_targetChannelID] =
+                    rotateObj->m_groundDirection == 2 ||
+                    rotateObj->m_groundDirection == 3;
+            }
+
+            if (rotateObj->m_channelOnly) break;
+
+            auto rotate = [rotateObj](PlayerObject* p) {
+                p->rotateGameplay(
+                    rotateObj->m_moveDirection, rotateObj->m_groundDirection,
+                    rotateObj->m_editVelocity, rotateObj->m_velocityModX,
+                    rotateObj->m_velocityModY, rotateObj->m_overrideVelocity,
+                    rotateObj->m_dontSlide);
+            };
+
+            rotate(player);
+
+            if (pl->m_gameState.m_isDualMode &&
+                bot->trajectory().isFakePlayer(player)) {
+                PlayerObject* other = bot->trajectory().getOtherPlayer(player);
+                if (other && other != player &&
+                    !bot->trajectory().playerHasActivated(other, object) &&
+                    !bot->trajectory().realPlayerHasActivated(other, object)) {
+                    rotate(other);
+                    phys::activateForTrajectory(object, other);
+                }
+            }
+
             break;
         }
         case 3022: {
@@ -687,10 +714,15 @@ void checkSpawnObjects(GJBaseGameLayer* pl, PlayerObject* player) {
         return;
     }
 
-    int startingIndex = pl->m_gameState.m_spawnChannelRelated0.at(
-        pl->m_gameState.m_currentChannel);
-    bool goingBack = pl->m_gameState.m_spawnChannelRelated1.at(
-        pl->m_gameState.m_currentChannel);
+    const int channel = pl->m_gameState.m_currentChannel;
+    const auto& related0 = pl->m_gameState.m_spawnChannelRelated0;
+    const auto& related1 = pl->m_gameState.m_spawnChannelRelated1;
+
+    auto startIt = related0.find(channel);
+    auto backIt = related1.find(channel);
+
+    int startingIndex = startIt == related0.end() ? 0 : startIt->second;
+    bool goingBack = backIt == related1.end() ? false : backIt->second;
 
     for (int i = startingIndex; static_cast<unsigned int>(i) < objects->count();
          i++) {

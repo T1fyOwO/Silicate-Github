@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include "dsp.hpp"
 
@@ -44,6 +45,7 @@ struct RendererSettings {
     bool m_firstAttemptPause = false;
     double m_fadeInTime = 1.5;
     double m_fadeOutTime = 1.5;
+    int m_visualFps = 60;
 };
 
 template <>
@@ -55,7 +57,9 @@ struct glz::meta<RendererSettings> {
         "after_end_time", &T::m_afterEndTime, "color_fix", &T::m_colorFix,
         "render_args", &T::m_renderArgs, "output_path", hide{&T::m_outputPath},
         "music_volume", &T::m_musicVolume, "sfx_volume", &T::m_sfxVolume,
-        "record_paused", &T::m_firstAttemptPause);
+        "fade_in", &T::m_fadeInTime, "fade_out", &T::m_fadeOutTime,
+        "visual_fps", &T::m_visualFps, "record_paused",
+        &T::m_firstAttemptPause);
 };
 
 #define SL_AV_PTR(type) std::unique_ptr<type, std::function<void(type*)>>
@@ -78,6 +82,13 @@ struct glz::meta<RendererSettings> {
 
 class Renderer {
    public:
+    ~Renderer() {
+        // don't let the thread get charlie kirked and cause a crash
+        if (m_recordThread.joinable()) {
+            m_recordThread.detach();
+        }
+    }
+
     void queueStart() { m_shouldStart = true; }
     void startIfQueued() {
         if (m_shouldStart) {
@@ -86,6 +97,9 @@ class Renderer {
             if (ret.isErr()) {
                 geode::log::error("Failed to start recording: {}",
                                   ret.unwrapErr());
+                // PlayLayer::init took the view for a render that never
+                // happened
+                this->restoreView();
             }
         }
     }
@@ -96,6 +110,10 @@ class Renderer {
     geode::Result<> writeAudio(std::vector<float>& data, uint64_t pts);
     geode::Result<> stop();
 
+    void acquireView();
+    void reacquireView();
+    void restoreView();
+
     void signalStop() {
         {
             std::lock_guard<std::mutex> lock(m_recordMutex);
@@ -105,6 +123,8 @@ class Renderer {
     }
 
     void recordLoop();
+
+    void finishStop();
 
     bool tryBeginFrame();
 
@@ -221,6 +241,9 @@ class Renderer {
     float m_visualFps = 60.0f;
     std::atomic<bool> m_recording = false;
 
+    std::thread m_recordThread;
+    std::atomic<bool> m_readyToKill = false;
+
     std::mutex m_recordMutex;
     std::condition_variable m_recordCv;
 
@@ -248,6 +271,9 @@ class Renderer {
 
     int m_alignedWidth = 0;
     int m_alignedHeight = 0;
+
+    cocos2d::CCSize m_windowSize;
+    bool m_viewResized = false;
 
     bool m_ffmpegLoaded = false;
 

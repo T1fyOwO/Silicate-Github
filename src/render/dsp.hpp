@@ -78,6 +78,7 @@ class AudioRecorder {
     void gatherOne();
 
     void unpause();
+    void syncMixFormat();
 
     std::vector<float> getBuffer();
     std::vector<float> collectData(double videoTime);
@@ -118,6 +119,7 @@ class AudioRecorder {
     int m_sampleRate = 0;
     int m_channels = 0;
     size_t m_lastCollectedLength = 0;
+    std::atomic<int> m_mixedChannels{0};
 
     std::vector<float> m_buffer;
 

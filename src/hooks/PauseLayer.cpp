@@ -21,6 +21,8 @@ struct SLPauseLayer : Modify<SLPauseLayer, PauseLayer> {
             Renderer::get()->signalStop();
         }
 
+        Renderer::get()->restoreView();
+
         auto bot = Bot::get();
 
         bot->updater().setPaused(false);

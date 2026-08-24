@@ -10,6 +10,7 @@
 
 #include "bot/bot.hpp"
 #include "bot/updater.hpp"
+#include "checkpoint/fix.hpp"
 
 using namespace geode::prelude;
 
@@ -19,8 +20,12 @@ void ReplaySystem::onReset(uint32_t newFrame) {
 
         m_inputIndex = m_actionAtom.length();
 
-        m_teleportRandomState = m_teleportRandomState * 214013 + 2531011;
-        m_shakeRandomState = m_shakeRandomState * 214013 + 2531011;
+        if (!GJBaseGameLayer::get()->m_isPracticeMode &&
+            !Bot::get()->practiceFix().m_isBackstep) {
+            m_teleportRandomState = m_teleportRandomState * 214013 + 2531011;
+            m_shakeRandomState = m_shakeRandomState * 214013 + 2531011;
+            m_initialTPS = Bot::get()->updater().getTps();
+        }
     } else {
         if (m_actionAtom.m_actions.empty()) {
             m_inputIndex = 0;
@@ -86,7 +91,7 @@ void ReplaySystem::save(std::filesystem::path path, bool noOverwrite) {
 
     replay.m_meta.m_build = 81;
     replay.m_meta.m_seed = m_startingSeed;
-    replay.m_meta.m_tps = Bot::get()->updater().m_tps->inner();
+    replay.m_meta.m_tps = Bot::get()->updater().getTps();
 
     std::ofstream fd(path, std::ios::binary);
     auto result = replay.write(fd);
@@ -153,6 +158,7 @@ void ReplaySystem::processSlc2(slc::v2::Replay<ReplayMeta>& replay) {
     auto& updater = Bot::get()->updater();
     m_startingSeed = replay.m_meta.seed;
     updater.m_tps->inner() = replay.m_tps;
+    m_initialTPS = replay.m_tps;
     updater.m_tps->notifyChange();
     Bot::get()->setMode(Bot::Mode::Playing);
 }

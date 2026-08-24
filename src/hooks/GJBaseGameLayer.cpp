@@ -214,6 +214,7 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
         if (!lockDelta) {
             // Must be lock delta off OR is editor
             updater.calculateSteps(dt, updater.getPhysicsDt());
+            updater.m_shouldRender = true;
         }
 
         if (updater.m_respawnTimer > 0) {

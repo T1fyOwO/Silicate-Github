@@ -25,6 +25,7 @@ add_library(${PROJECT_NAME} SHARED
 
     src/hooks/CCActionManager.cpp
     src/hooks/CCDirector.cpp
+    src/hooks/CCEGLView.cpp
     src/hooks/CCScheduler.cpp
     src/hooks/EnhancedGameObject.cpp
     src/hooks/FMODAudioEngine.cpp
@@ -94,7 +95,7 @@ target_link_libraries(${PROJECT_NAME} Zydis)
 CPMAddPackage("gh:cursey/safetyhook#2f28386")
 target_link_libraries(${PROJECT_NAME} safetyhook)
 
-CPMAddPackage("gh:peonii/slc#main")
+CPMAddPackage("https://git.puppy.lgbt/silicate/slc.git#main")
 
 target_link_libraries(${PROJECT_NAME} libslc)
 target_compile_options(GeodeBindings PRIVATE -Wno-overloaded-virtual -Wno-unused-variable)
