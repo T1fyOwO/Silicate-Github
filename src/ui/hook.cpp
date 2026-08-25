@@ -12,6 +12,7 @@
 #include "replay/system.hpp"
 #include "shared/value/value.hpp"
 #include "ui/manager.hpp"
+#include "ui/widgets/yes_no_modal.hpp"
 
 using namespace geode::prelude;
 
@@ -27,7 +28,7 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         ImGuiHookCtx::get().handleResize(LOWORD(lParam), HIWORD(lParam));
     }
 
-    if (uMsg == WM_KILLFOCUS) {
+    if (uMsg == WM_KILLFOCUS && !slui::isYesNoModalOpen()) {
         Bot::get()->ui().m_state.m_visible->inner() = false;
     }
 
@@ -41,6 +42,16 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (Bot::get()->ui().m_state.m_visible->inner()) {
         ImGuiHookCtx::get().m_ctx.handleWndproc(hWnd, uMsg, wParam, lParam);
 
+        const bool keyboardMessage =
+            uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN || uMsg == WM_KEYUP ||
+            uMsg == WM_SYSKEYUP || uMsg == WM_CHAR;
+        const bool mouseMessage =
+            uMsg >= WM_MOUSEFIRST && uMsg <= WM_MOUSELAST;
+        if (slui::isYesNoModalOpen() &&
+            (keyboardMessage || mouseMessage)) {
+            return true;
+        }
+
         if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN || uMsg == WM_KEYUP ||
             uMsg == WM_SYSKEYUP || uMsg == WM_CHAR) {
             bool systemKey = uMsg == WM_SYSKEYDOWN || uMsg == WM_SYSKEYUP ||
@@ -50,9 +61,12 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             auto* b = SLBindingManager::get();
 
             bool isRelease = uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP;
-            int key = wParam;
-            if (b->wantsCapture() && isRelease) {
-                b->takeInput(key, shiftHeld, ctrlHeld, altHeld);
+            if (b->wantsCapture()) {
+                if (isRelease) {
+                    b->takeInput(static_cast<int>(wParam), shiftHeld, ctrlHeld,
+                                 altHeld);
+                }
+
                 return true;
             } else {
                 if (ImGui::GetIO().WantCaptureKeyboard && !systemKey) {

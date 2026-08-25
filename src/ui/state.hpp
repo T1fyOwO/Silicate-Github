@@ -192,18 +192,26 @@ struct UIState {
     struct KeybindEdit {
         std::string tag;
         std::string value;
+        bool initialized = false;
+        tabby::AutocompleteState actionAutocomplete;
+        tabby::DropdownState behaviorDropdown = {
+            .options = {"Hold", "Toggle", "Override"},
+        };
+        uint64_t order = 0;
         uint64_t seen = 0;
     };
 
+    std::string m_keybindSearch;
     std::unordered_map<KeybindControl*, KeybindEdit> m_keybindEdits;
+    uint64_t m_nextKeybindOrder = 0;
+    bool m_keybindOrderInitialized = false;
     KeybindControl* m_editedKeybindTag = nullptr;
     KeybindControl* m_editedKeybindValue = nullptr;
     uint64_t m_keybindEditGeneration = 0;
 
-    // Retagging destroys the control being drawn, so it can't happen while the
-    // keybind list is still being iterated. Deferred to the end of the tab.
     KeybindControl* m_pendingRetag = nullptr;
     std::string m_pendingRetagTag;
+    KeybindControl* m_pendingKeybindRemoval = nullptr;
 
     void toggle() { m_visible->inner() = !m_visible->inner(); }
 };

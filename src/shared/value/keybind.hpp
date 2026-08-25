@@ -112,6 +112,7 @@ inline bool isModifierKey(int key) {
 }
 
 inline std::string keyName(int key) {
+    if (key == 0) return "Unassigned";
     if ((key >= '0' && key <= '9') || (key >= 'A' && key <= 'Z'))
         return std::string(1, static_cast<char>(key));
     if (key >= 0x70 && key <= 0x87)  // VK_F1 .. VK_F24
@@ -181,11 +182,15 @@ class KeybindControl {
 
     using HashT = int;
 
-    HashT getHash() { return keybind::makeHash(m_key, m_modifiers); }
-    const std::string& getTag() { return m_valueTag; }
+    HashT getHash() const { return keybind::makeHash(m_key, m_modifiers); }
+    const std::string& getTag() const { return m_valueTag; }
     KeybindType getType() const { return m_type; }
+    void setType(KeybindType type) { m_type = type; }
     bool isActive() const { return m_active; }
-    std::string getKeyLabel() { return keybind::keyLabel(m_key, m_modifiers); }
+    void setActive(bool active) { m_active = active; }
+    std::string getKeyLabel() const {
+        return keybind::keyLabel(m_key, m_modifiers);
+    }
 
     // identifies the T this control casts `value`/`previous` to
     virtual keybind::TypeKey getTypeKey() const = 0;

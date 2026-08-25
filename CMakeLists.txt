@@ -43,6 +43,7 @@ add_library(${PROJECT_NAME} SHARED
     src/ui/hook.cpp
     src/ui/theme.cpp
     src/ui/widgets/tooltip.cpp
+    src/ui/widgets/yes_no_modal.cpp
 
     src/replay/replay.cpp
     src/replay/system.cpp

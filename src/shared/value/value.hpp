@@ -5,6 +5,7 @@
 #include <glaze/json/read.hpp>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -146,8 +147,18 @@ class SLBindingManager {
 
         if (keybind::isModifierKey(keyCode)) return;
 
-        // shitcode
-        auto& bucket = m_keybinds[m_currentlyEdited->getHash()];
+        if (keyCode == 0x1B) { // escape
+            this->stopEdit();
+            return;
+        }
+
+        if (keyCode == 0x08 || keyCode == 0x2E) { // backspace, delete
+            keyCode = 0;
+            shift = ctrl = alt = false;
+        }
+
+        const auto oldHash = m_currentlyEdited->getHash();
+        auto& bucket = m_keybinds[oldHash];
         auto it = std::ranges::find_if(
             bucket, [this](auto& k) { return k.get() == m_currentlyEdited; });
 
@@ -156,6 +167,8 @@ class SLBindingManager {
             kb = *it;
             bucket.erase(it);
         }
+
+        if (bucket.empty()) m_keybinds.erase(oldHash);
 
         m_currentlyEdited->m_key = keyCode;
         m_currentlyEdited->m_modifiers =
@@ -178,41 +191,52 @@ class SLBindingManager {
         return m_values.contains(tag);
     }
 
-    // Always build a keybind from the value its tag names: SLKeybind<T> casts
-    // the value's storage to T, so the two can never be picked independently.
+    std::vector<std::string> getBindableValueTags() const {
+        std::vector<std::string> tags;
+        tags.reserve(m_values.size());
+
+        for (const auto& tag : m_values | std::views::keys) {
+            // haha
+            if (tag.starts_with('_') || tag.find("_______") != std::string::npos)
+                continue;
+            tags.push_back(tag);
+        }
+
+        std::ranges::sort(tags);
+        return tags;
+    }
+
     std::shared_ptr<KeybindControl> makeKeybind(RawKeybind& raw) {
         auto value = m_values.find(raw.m_valueTag);
         if (value == m_values.end()) return nullptr;
 
-        return value->second->createKeybind(raw);
+        auto keybind = value->second->createKeybind(raw);
+        if (keybind) keybind->setActive(raw.m_active);
+        return keybind;
     }
 
-    // Retagging can't just overwrite the string -- the new tag may name a value
-    // of a different type, so the control has to be rebuilt around it. Returns
-    // false and changes nothing if the tag is unknown; on success `kb` is
-    // destroyed and the replacement takes its slot.
-    bool retagKeybind(KeybindControl* kb, const std::string& tag) {
-        if (kb == nullptr || kb->getTag() == tag) return false;
+    KeybindControl* retagKeybind(KeybindControl* kb, const std::string& tag) {
+        if (kb == nullptr || kb->getTag() == tag) return nullptr;
 
         RawKeybind raw{kb->m_key,   kb->m_modifiers, tag,
                        kb->getType(), kb->isActive(), kb->toString()};
 
         auto replacement = this->makeKeybind(raw);
-        if (!replacement) return false;
+        if (!replacement) return nullptr;
 
         auto bucket = m_keybinds.find(kb->getHash());
-        if (bucket == m_keybinds.end()) return false;
+        if (bucket == m_keybinds.end()) return nullptr;
 
         auto it = std::ranges::find_if(bucket->second,
                                        [kb](auto& k) { return k.get() == kb; });
-        if (it == bucket->second.end()) return false;
+        if (it == bucket->second.end()) return nullptr;
 
         // key and modifiers are unchanged, so the bucket is still the right one
         if (m_currentlyEdited == kb) m_currentlyEdited = replacement.get();
         *it = replacement;
 
         geode::log::info("Retagged keybind to {}", tag);
-        return true;
+        return replacement.get();
     }
 
     const std::unordered_map<KeybindControl::HashT, KeybindVector>&
@@ -227,6 +251,21 @@ class SLBindingManager {
         } else {
             m_keybinds[kb->getHash()] = {kb};
         }
+    }
+
+    bool removeKeybind(KeybindControl* kb) {
+        if (kb == nullptr) return false;
+
+        auto bucket = m_keybinds.find(kb->getHash());
+        if (bucket == m_keybinds.end()) return false;
+
+        if (m_currentlyEdited == kb) this->stopEdit();
+        const auto oldSize = bucket->second.size();
+        std::erase_if(bucket->second,
+                      [kb](const auto& item) { return item.get() == kb; });
+        const bool removed = bucket->second.size() != oldSize;
+        if (bucket->second.empty()) m_keybinds.erase(bucket);
+        return removed;
     }
 
     void processKeyEvent(int key, bool pressed, bool ctrl, bool shift,

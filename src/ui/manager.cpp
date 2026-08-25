@@ -5,9 +5,12 @@
 #include <Geode/Enums.hpp>
 #include <Geode/Geode.hpp>
 #include <algorithm>
+#include <cctype>
 #include <slc/formats/v3/atom.hpp>
 #include <slc/formats/v3/replay.hpp>
 #include <tabby.hpp>
+#include <tuple>
+#include <unordered_set>
 #include <variant>
 #include <widgets/button.hpp>
 #include <widgets/drag.hpp>
@@ -34,6 +37,7 @@
 #include "widgets/image.hpp"
 #include "widgets/input.hpp"
 #include "widgets/tooltip.hpp"
+#include "widgets/yes_no_modal.hpp"
 
 #ifdef SILICATE_PROTECT
 #include "VMProtect/VMProtectSDK.h"
@@ -470,11 +474,12 @@ static void postDrawBlurEffect(const ImDrawList*, const ImDrawCmd*) {
 
 static void renderBlurBg(float rounding = 24.0f, float borderSize = 2.5f,
                          bool useShader = true, float bgOpacity = 0.15f,
-                         bool pp = false) {
+                         bool pp = false, float opacityMultiplier = 1.0f) {
     rounding *= tabby::TabbyGlobalCfg::get().uiScale;
     borderSize *= tabby::TabbyGlobalCfg::get().uiScale;
 
-    bgOpacity = std::pow(bgOpacity, Bot::get()->ui().m_theme->m_opacityExp);
+    bgOpacity = std::pow(bgOpacity, Bot::get()->ui().m_theme->m_opacityExp) *
+                opacityMultiplier;
 
     if (!useShader) {
         ImGui::GetWindowDrawList()->AddRectFilled(
@@ -578,6 +583,57 @@ static std::vector<std::string> filterCandidates(
         }
     }
 
+    return filtered;
+}
+
+static std::string keybindActionName(std::string_view tag) {
+    if (tag == "ui.visible") return "Show / Hide UI";
+    if (tag == "updater.advance_one") return "Step Forward";
+    if (tag == "updater.advance_back") return "Step Backward";
+    if (tag == "updater.frame_advance") return "Frame Advance";
+    if (tag == "updater.max_upr") return "Maximum Updates per Render";
+    if (tag == "updater.ssb_fix") return "Scroll Speed Bug Fix";
+    if (tag == "replay.althook") return "Alternate Input Hook";
+
+    std::string name(tag);
+    bool capitalize = true;
+    for (char& character : name) {
+        if (character == '_' || character == '.') {
+            character = ' ';
+            capitalize = true;
+        } else if (capitalize) {
+            character = static_cast<char>(
+                std::toupper(static_cast<unsigned char>(character)));
+            capitalize = false;
+        }
+    }
+    return name;
+}
+
+static bool keybindTextMatches(std::string_view text, std::string_view filter) {
+    return std::ranges::search(text, filter, [](char left, char right) {
+               return std::tolower(static_cast<unsigned char>(left)) ==
+                      std::tolower(static_cast<unsigned char>(right));
+           }).begin() != text.end();
+}
+
+static bool keybindMatches(const KeybindControl& keybind,
+                           std::string_view filter) {
+    if (filter.empty()) return true;
+    return keybindTextMatches(keybind.getTag(), filter) ||
+           keybindTextMatches(keybindActionName(keybind.getTag()), filter) ||
+           keybindTextMatches(keybind.getKeyLabel(), filter);
+}
+
+static std::vector<std::string> filterKeybindActions(
+    const std::vector<std::string>& actions, std::string_view filter) {
+    std::vector<std::string> filtered;
+    for (const auto& action : actions) {
+        if (keybindTextMatches(action, filter) ||
+            keybindTextMatches(keybindActionName(action), filter)) {
+            filtered.push_back(action);
+        }
+    }
     return filtered;
 }
 
@@ -788,6 +844,7 @@ void UIManager::draw() {
 
     cfg.uiScale = m_state.m_uiScale->inner() * getWindowDpi();
     const bool visible = m_state.m_visible->inner();
+    if (!visible) SLBindingManager::get()->stopEdit();
 
     if (m_state.m_playAnimations->inner()) {
         const float visibilityStep = ImGui::GetIO().DeltaTime *
@@ -895,13 +952,11 @@ void UIManager::draw() {
                     m_state.m_currentTab = UIState::UITab::Render;
                 }
 
-                if (m_state.m_showExperimentalFeatures) {
-                    if (tabby::button_selector(
-                            "\uf0fe    Keybinds##Tab",
-                            m_state.m_currentTab == UIState::UITab::Keybinds)
-                            .pressed) {
-                        m_state.m_currentTab = UIState::UITab::Keybinds;
-                    }
+                if (tabby::button_selector(
+                        "\uf0fe    Keybinds##Tab",
+                        m_state.m_currentTab == UIState::UITab::Keybinds)
+                        .pressed) {
+                    m_state.m_currentTab = UIState::UITab::Keybinds;
                 }
 
                 if (tabby::button_selector(
@@ -914,6 +969,10 @@ void UIManager::draw() {
                 ImGui::PopStyleVar(2);
             },
             200.0f, true);
+
+        if (m_state.m_currentTab != UIState::UITab::Keybinds) {
+            SLBindingManager::get()->stopEdit();
+        }
 
         tabby::section("Main", [&]() {
             if (!Bot::get()->isEnabled()) {
@@ -968,18 +1027,34 @@ void UIManager::draw() {
 
                     if (tabby::button("Save").pressed) {
                         auto path = rs.getCurrentPath();
-                        rs.backupExisting(path);
-                        rs.save(path);
 
-                        m_state.m_replayNames.clear();
-                        for (const auto& entry :
-                             std::filesystem::directory_iterator(
-                                 Mod::get()->getPersistentDir() / "replays")) {
-                            if (entry.is_regular_file() &&
-                                entry.path().extension() == ".slc") {
-                                m_state.m_replayNames.push_back(
-                                    entry.path().stem().string());
+                        const auto saveReplay = [&rs, this, path]() {
+                            rs.save(path);
+
+                            m_state.m_replayNames.clear();
+                            for (const auto& entry :
+                                 std::filesystem::directory_iterator(
+                                     Mod::get()->getPersistentDir() /
+                                     "replays")) {
+                                if (entry.is_regular_file() &&
+                                    entry.path().extension() == ".slc") {
+                                    m_state.m_replayNames.push_back(
+                                        entry.path().stem().string());
+                                }
                             }
+                        };
+
+                        if (std::filesystem::exists(path)) {
+                            slui::showYesNoModal({
+                                .title = "Overwrite?",
+                                .message = fmt::format(
+                                    "Are you sure you'd like to overwrite "
+                                    "your existing '{}' replay?",
+                                    path.filename()),
+                                .onYes = saveReplay,
+                            });
+                        } else {
+                            saveReplay();
                         }
                     }
                 });
@@ -990,9 +1065,21 @@ void UIManager::draw() {
                     // prune all inputs after current frame if in a level
                     if (PlayLayer::get()) {
                         if (rs.getInputIndex() < rs.m_actionAtom.length()) {
-                            rs.createBackup();
-                            rs.m_actionAtom.clipActions(
-                                bot->updater().getFrame());
+                            slui::showYesNoModal(
+                                {.title = "Switch to Record?",
+                                 .message = "Are you sure you'd like to switch "
+                                            "to Record mode? This will remove "
+                                            "all inputs after this tick.",
+                                 .onYes =
+                                     [bot, &rs]() {
+                                         rs.createBackup();
+                                         rs.m_actionAtom.clipActions(
+                                             bot->updater().getFrame());
+                                     },
+                                 .onNo =
+                                     [bot]() {
+                                         bot->setMode(Bot::Mode::Playing);
+                                     }});
                         }
                     }
                 }
@@ -1789,134 +1876,302 @@ void UIManager::draw() {
 
             tabby::tab(m_state.m_currentTab, UIState::UITab::Keybinds, [&]() {
                 auto* b = SLBindingManager::get();
-
-                auto& kbs = b->getKeybinds();
-
                 tabby::text("Keybinds", m_bold);
 
                 tabby::divider(false);
 
+                tabby::input_text("Search##Keybinds", "Search Keybinds...",
+                                  m_state.m_keybindSearch);
+
+                if (tabby::button("Add Binding").pressed) {
+                    RawKeybind raw{
+                        .m_key = 0,
+                        .m_modifiers = 0,
+                        .m_valueTag = "updater.frame_advance",
+                        .m_type = KeybindType::Toggle,
+                        .m_active = true,
+                        .m_value = "1",
+                    };
+
+                    if (auto keybind = b->makeKeybind(raw)) {
+                        m_state.m_keybindSearch.clear();
+                        b->registerKeybind(keybind);
+                        b->startEdit(keybind.get());
+                    }
+                }
+
+                slui::tooltip(
+                    "Creates a keybind for Frame Advance and immediately "
+                    "starts listening. You can choose a different action "
+                    "below.");
+
+                tabby::divider();
+
+                std::vector<std::shared_ptr<KeybindControl>> keybinds;
+                std::unordered_set<KeybindControl*> liveKeybinds;
+                for (const auto& bucket :
+                     b->getKeybinds() | std::views::values) {
+                    for (const auto& keybind : bucket) {
+                        if (!keybind) continue;
+                        liveKeybinds.insert(keybind.get());
+                        if (keybindMatches(*keybind, m_state.m_keybindSearch)) {
+                            keybinds.push_back(keybind);
+                        }
+                    }
+                }
+
+                if (!m_state.m_keybindOrderInitialized) {
+                    std::ranges::sort(keybinds, [](const auto& left,
+                                                   const auto& right) {
+                        return std::tuple(keybindActionName(left->getTag()),
+                                          left->getKeyLabel()) <
+                               std::tuple(keybindActionName(right->getTag()),
+                                          right->getKeyLabel());
+                    });
+                    for (const auto& keybind : keybinds) {
+                        m_state.m_keybindEdits[keybind.get()].order =
+                            ++m_state.m_nextKeybindOrder;
+                    }
+                    m_state.m_keybindOrderInitialized = true;
+                } else {
+                    for (const auto& keybind : keybinds) {
+                        auto& edit = m_state.m_keybindEdits[keybind.get()];
+                        if (edit.order == 0) {
+                            edit.order = ++m_state.m_nextKeybindOrder;
+                        }
+                    }
+                    std::ranges::sort(
+                        keybinds, [this](const auto& left, const auto& right) {
+                            return m_state.m_keybindEdits.at(left.get()).order <
+                                   m_state.m_keybindEdits.at(right.get()).order;
+                        });
+                }
+
+                const auto bindableActions = b->getBindableValueTags();
                 m_state.m_keybindEditGeneration++;
+                std::string currentGroup;
 
-                int row = 0;
-                for (auto& kb : kbs | std::views::values | std::views::join) {
-                    if (!kb) continue;
+                if (keybinds.empty()) {
+                    ImGui::PushStyleColor(
+                        ImGuiCol_Text,
+                        ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                    tabby::text(m_state.m_keybindSearch.empty()
+                                    ? "No keybinds yet. Add one to get started."
+                                    : "No keybinds match your search.");
+                    ImGui::PopStyleColor();
+                }
 
-                    int id = row++;
-
+                for (const auto& kb : keybinds) {
                     auto& edit = m_state.m_keybindEdits[kb.get()];
+                    const int id = static_cast<int>(edit.order);
                     edit.seen = m_state.m_keybindEditGeneration;
-
-                    // don't fight the user while they're typing
-                    if (m_state.m_editedKeybindTag != kb.get()) {
+                    if (!edit.initialized) {
                         edit.tag = kb->getTag();
+                        edit.value = kb->toString();
+                        edit.initialized = true;
+                    } else if (m_state.m_editedKeybindValue != kb.get()) {
+                        edit.value = kb->toString();
                     }
 
-                    // tints the field; the text as of last frame, since the
-                    // edit happens while the widget draws
-                    bool tagValid = b->hasValue(edit.tag);
-                    tabby::WidgetState tagState;
-                    bool tagCommitted = false;
-
-                    if (!tagValid) {
-                        ImGui::PushStyleColor(ImGuiCol_Text,
-                                              ImVec4(1.0, 0.5, 0.5, 1.0));
-                    }
-
-                    tagState = tabby::input_text(
-                        fmt::format("Tag##tagkb{}", id), "Tag", edit.tag);
-
-                    // has to be asked before anything else is drawn
-                    tagCommitted = ImGui::IsItemDeactivatedAfterEdit();
-
-                    if (!tagValid) {
-                        ImGui::PopStyleColor();
-                    }
-
-                    tabby::fraction(
-                        2.0,
+                    ImGui::PushID(id);
+                    const std::string actionName =
+                        keybindActionName(kb->getTag());
+                    settingsCard(
+                        "KeybindCard", actionName.c_str(), nullptr, m_medium,
                         [&]() {
-                            tabby::text("Bind");
-
-                            tabby::same_line();
-
-                            ImGui::SetCursorPosX(
-                                tabby::TabbyGlobalCfg::get().widgetWidth +
-                                16.0);
-
-                            bool isEditing = b->isEditing(kb.get());
-                            std::string buttonText =
-                                fmt::format("{}##kb{}",
-                                            isEditing ? "Press a key..."
+                            const bool isEditing = b->isEditing(kb.get());
+                            const std::string captureLabel =
+                                fmt::format("{}##Capture{}",
+                                            isEditing ? "Press a shortcut..."
                                                       : kb->getKeyLabel(),
                                             id);
 
-                            if (tabby::button(buttonText).pressed) {
+                            if (isEditing) {
+                                ImGui::PushStyleColor(
+                                    ImGuiCol_Button,
+                                    ImGui::GetStyleColorVec4(
+                                        ImGuiCol_ButtonActive));
+                            }
+                            if (tabby::button(captureLabel).pressed) {
                                 if (isEditing) {
                                     b->stopEdit();
                                 } else {
                                     b->startEdit(kb.get());
                                 }
                             }
-                        },
-                        16.0);
+                            if (isEditing) ImGui::PopStyleColor();
+                            slui::tooltip(
+                                "Click, then press a key combination. Escape "
+                                "cancels; Backspace or Delete clears the "
+                                "shortcut.");
 
-                    if (tagState.held) {
-                        m_state.m_editedKeybindTag = kb.get();
-                    } else if (m_state.m_editedKeybindTag == kb.get()) {
+                            const bool tagValidBeforeInput =
+                                b->hasValue(edit.tag);
+                            const std::string tagBeforeInput = edit.tag;
+                            edit.actionAutocomplete.suggestions =
+                                edit.tag == kb->getTag()
+                                    ? bindableActions
+                                    : filterKeybindActions(bindableActions,
+                                                           edit.tag);
+                            if (!tagValidBeforeInput) {
+                                ImGui::PushStyleColor(
+                                    ImGuiCol_Text,
+                                    ImVec4(1.0f, 0.5f, 0.5f, 1.0f));
+                            }
+                            auto actionState = tabby::input_text_autocomplete(
+                                fmt::format("Action##Action{}", id),
+                                "Search Actions...", edit.tag,
+                                edit.actionAutocomplete, popupShaderFn);
+                            const bool actionCommitted =
+                                ImGui::IsItemDeactivatedAfterEdit();
+                            if (!tagValidBeforeInput) ImGui::PopStyleColor();
+                            const bool tagValidAfterInput =
+                                b->hasValue(edit.tag);
+                            const bool suggestionClicked =
+                                edit.tag != tagBeforeInput &&
+                                tagValidAfterInput;
+                            const bool suggestionAcceptedWithKeyboard =
+                                tagValidAfterInput &&
+                                (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+                                 ImGui::IsKeyPressed(ImGuiKey_KeypadEnter,
+                                                     false));
+                            slui::tooltip(
+                                "The Silicate setting or action controlled by "
+                                "this "
+                                "keybind. Start typing to see available "
+                                "actions.");
+
+                            if (actionState.held) {
+                                m_state.m_editedKeybindTag = kb.get();
+                            } else if (m_state.m_editedKeybindTag == kb.get()) {
+                                m_state.m_editedKeybindTag = nullptr;
+                            }
+
+                            if (tagValidAfterInput &&
+                                edit.tag != kb->getTag() &&
+                                (actionCommitted || suggestionClicked ||
+                                 suggestionAcceptedWithKeyboard ||
+                                 !actionState.held)) {
+                                m_state.m_pendingRetag = kb.get();
+                                m_state.m_pendingRetagTag = edit.tag;
+                            }
+
+                            int behavior = static_cast<int>(kb->getType());
+                            if (tabby::dropdown(
+                                    fmt::format("Behavior##Behavior{}", id),
+                                    edit.behaviorDropdown, behavior,
+                                    popupShaderFn)
+                                    .changed) {
+                                kb->setType(static_cast<KeybindType>(behavior));
+                            }
+                            slui::tooltip(
+                                "While held restores the old value on release. "
+                                "Toggle switches between the assigned and "
+                                "previous "
+                                "value. Set once only applies the assigned "
+                                "value.");
+
+                            if (kb->getTypeKey() == keybind::typeKey<bool>()) {
+                                bool assignedValue =
+                                    edit.value != "0" && edit.value != "false";
+                                if (tabby::checkbox(
+                                        fmt::format(
+                                            "Assigned Value##Assigned{}", id),
+                                        assignedValue)
+                                        .changed) {
+                                    edit.value = assignedValue ? "1" : "0";
+                                    kb->fromString(edit.value);
+                                }
+                                slui::tooltip(
+                                    "Choose whether this shortcut assigns the "
+                                    "action to on or off.");
+                            } else {
+                                const bool valueValid =
+                                    kb->canParse(edit.value);
+                                if (!valueValid) {
+                                    ImGui::PushStyleColor(
+                                        ImGuiCol_Text,
+                                        ImVec4(1.0f, 0.5f, 0.5f, 1.0f));
+                                }
+                                auto valueState = tabby::input_text(
+                                    fmt::format("Value##Value{}", id), "Value",
+                                    edit.value);
+                                if (!valueValid) ImGui::PopStyleColor();
+                                slui::tooltip(
+                                    "The value assigned to the action when "
+                                    "this "
+                                    "shortcut activates.");
+
+                                if (valueState.held) {
+                                    m_state.m_editedKeybindValue = kb.get();
+                                } else if (m_state.m_editedKeybindValue ==
+                                           kb.get()) {
+                                    m_state.m_editedKeybindValue = nullptr;
+                                }
+                                if (valueState.changed)
+                                    kb->fromString(edit.value);
+                            }
+
+                            tabby::fraction(2.0, [&]() {
+                                bool active = kb->isActive();
+                                if (tabby::checkbox(
+                                        fmt::format("Enabled##Enabled{}", id),
+                                        active)
+                                        .changed) {
+                                    kb->setActive(active);
+                                }
+
+                                tabby::same_line();
+                                if (tabby::button(
+                                        fmt::format("Remove##Remove{}", id))
+                                        .pressed) {
+                                    m_state.m_pendingKeybindRemoval = kb.get();
+                                }
+                            });
+                        });
+                    ImGui::PopID();
+                }
+
+                if (m_state.m_pendingKeybindRemoval != nullptr) {
+                    auto* removed = m_state.m_pendingKeybindRemoval;
+                    if (m_state.m_pendingRetag == removed) {
+                        m_state.m_pendingRetag = nullptr;
+                        m_state.m_pendingRetagTag.clear();
+                    }
+                    b->removeKeybind(removed);
+                    m_state.m_keybindEdits.erase(removed);
+                    if (m_state.m_editedKeybindTag == removed)
                         m_state.m_editedKeybindTag = nullptr;
-                    }
-
-                    if (tagCommitted && b->hasValue(edit.tag)) {
-                        m_state.m_pendingRetag = kb.get();
-                        m_state.m_pendingRetagTag = edit.tag;
-                    }
-
-                    // don't fight the user while they're typing
-                    if (m_state.m_editedKeybindValue != kb.get()) {
-                        edit.value = kb->toString();
-                    }
-
-                    bool valid = kb->canParse(edit.value);
-                    if (!valid) {
-                        ImGui::PushStyleColor(ImGuiCol_Text,
-                                              ImVec4(1.0, 0.5, 0.5, 1.0));
-                    }
-
-                    auto valueState =
-                        tabby::input_text(fmt::format("Value##valuekb{}", id),
-                                          "Value", edit.value);
-
-                    if (!valid) {
-                        ImGui::PopStyleColor();
-                    }
-
-                    if (valueState.held) {
-                        m_state.m_editedKeybindValue = kb.get();
-                    } else if (m_state.m_editedKeybindValue == kb.get()) {
+                    if (m_state.m_editedKeybindValue == removed)
                         m_state.m_editedKeybindValue = nullptr;
-                    }
-
-                    if (valueState.changed) {
-                        kb->fromString(edit.value);
-                    }
-
-                    tabby::divider();
+                    m_state.m_pendingKeybindRemoval = nullptr;
                 }
 
                 if (m_state.m_pendingRetag != nullptr) {
-                    if (b->retagKeybind(m_state.m_pendingRetag,
-                                        m_state.m_pendingRetagTag)) {
-                        m_state.m_keybindEdits.erase(m_state.m_pendingRetag);
-
-                        if (m_state.m_editedKeybindTag ==
-                            m_state.m_pendingRetag) {
-                            m_state.m_editedKeybindTag = nullptr;
+                    auto* previous = m_state.m_pendingRetag;
+                    if (auto* replacement = b->retagKeybind(
+                            previous, m_state.m_pendingRetagTag)) {
+                        liveKeybinds.erase(previous);
+                        liveKeybinds.insert(replacement);
+                        auto editNode =
+                            m_state.m_keybindEdits.extract(previous);
+                        if (!editNode.empty()) {
+                            auto replacementEdit = std::move(editNode.mapped());
+                            replacementEdit.tag = replacement->getTag();
+                            replacementEdit.value = replacement->toString();
+                            replacementEdit.actionAutocomplete = {};
+                            replacementEdit.seen =
+                                m_state.m_keybindEditGeneration;
+                            m_state.m_keybindEdits.emplace(
+                                replacement, std::move(replacementEdit));
                         }
 
-                        if (m_state.m_editedKeybindValue ==
-                            m_state.m_pendingRetag) {
-                            m_state.m_editedKeybindValue = nullptr;
+                        if (m_state.m_editedKeybindTag == previous) {
+                            m_state.m_editedKeybindTag = replacement;
+                        }
+
+                        if (m_state.m_editedKeybindValue == previous) {
+                            m_state.m_editedKeybindValue = replacement;
                         }
                     }
 
@@ -1924,8 +2179,9 @@ void UIManager::draw() {
                     m_state.m_pendingRetagTag.clear();
                 }
 
-                std::erase_if(m_state.m_keybindEdits, [this](const auto& item) {
-                    if (item.second.seen == m_state.m_keybindEditGeneration) {
+                std::erase_if(m_state.m_keybindEdits, [this, &liveKeybinds](
+                                                          const auto& item) {
+                    if (liveKeybinds.contains(item.first)) {
                         return false;
                     }
 
@@ -1939,21 +2195,6 @@ void UIManager::draw() {
 
                     return true;
                 });
-
-                if (tabby::button("Add Keybind").pressed) {
-                    RawKeybind k{
-                        .m_key = 0,
-                        .m_modifiers = 0,
-                        .m_valueTag = "updater.frame_advance",
-                        .m_type = KeybindType::Toggle,
-                        .m_active = true,
-                        .m_value = "1",
-                    };
-
-                    if (auto kb = b->makeKeybind(k)) {
-                        b->registerKeybind(kb);
-                    }
-                }
             });
 
             tabby::tab(m_state.m_currentTab, UIState::UITab::Settings, [&]() {
@@ -2226,6 +2467,11 @@ void UIManager::draw() {
             24.0f * tabby::TabbyGlobalCfg::get().uiScale,
             ImDrawFlags_RoundCornersAll,
             2.5 * tabby::TabbyGlobalCfg::get().uiScale);
+
+        slui::drawYesNoModal([this]() {
+            renderBlurBg(16.0f, 1.5f, m_state.m_useShader->inner(), 0.0, false,
+                         0.45f);
+        });
     });
 
     ImGui::PopStyleVar();
