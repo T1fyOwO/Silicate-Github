@@ -39,7 +39,7 @@ class SLSettings {
     bool dynamicUpr = true;
     double fpsTarget = 60.0;
     bool lockDelta = true;
-    int lockDeltaMode = 0;
+    int lockDeltaMode = 1;
 
     bool fullGamePrediction = false;
     float acceptablePrediction = 0.45;

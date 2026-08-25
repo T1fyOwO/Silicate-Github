@@ -33,6 +33,7 @@
 #include "widgets/checkbox.hpp"
 #include "widgets/image.hpp"
 #include "widgets/input.hpp"
+#include "widgets/tooltip.hpp"
 
 #ifdef SILICATE_PROTECT
 #include "VMProtect/VMProtectSDK.h"
@@ -337,7 +338,7 @@ void UIManager::setup() {
         geode::utils::string::pathToString(Mod::get()->getResourcesDir() /
                                            "font_medium.ttf")
             .c_str(),
-        20.0f, &mediumFontCfg);
+        18.0f, &mediumFontCfg);
     mediumFontCfg.MergeMode = true;
     mediumFontCfg.GlyphOffset = ImVec2(0.0f, -1.0f);
     ImGui::GetIO().Fonts->AddFontFromFileTTF(
@@ -649,8 +650,7 @@ struct ScopedInset {
 };
 
 template <typename F>
-void animated(const char* id, bool visible, F&& content,
-                        bool inset = true) {
+void animated(const char* id, bool visible, F&& content, bool inset = true) {
     ImGui::PushID(id);
     const ImGuiID progressId = ImGui::GetID("##VisibilityProgress");
     const ImGuiID heightId = ImGui::GetID("##VisibilityHeight");
@@ -712,6 +712,66 @@ void animated(const char* id, bool visible, F&& content,
     ImGui::SetCursorPosY(startCursorY + fullAdvance * eased);
 }
 
+template <typename F>
+bool settingsCard(const char* id, const char* title, bool* enabled,
+                  tabby::Font& titleFont, F&& content) {
+    auto& cfg = tabby::TabbyGlobalCfg::get();
+    const float scale = cfg.uiScale;
+    const float outerPadding = 18.0f * scale;
+    const float topPadding = ImGui::GetStyle().ItemSpacing.y;
+    const float cardSpacing = 8.0f * scale;
+    const float cardWidth =
+        static_cast<float>(cfg.widgetWidth) + outerPadding * 2.0f;
+    const ImVec2 contentStart = ImGui::GetCursorScreenPos();
+    const ImVec2 cardStart(contentStart.x - outerPadding, contentStart.y);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+    ImGui::PushID(id);
+    drawList->ChannelsSplit(2);
+    drawList->ChannelsSetCurrent(1);
+
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + topPadding);
+
+    bool pressed = false;
+    {
+        tabby::ScopedFont heading(titleFont);
+        if (enabled) {
+            pressed = tabby::checkbox(title, *enabled).pressed;
+        } else {
+            tabby::text(title);
+        }
+    }
+
+    animated(
+        "CardBody", enabled == nullptr || *enabled, [&]() { content(); },
+        false);
+
+    const ImVec2 cardEnd = ImGui::GetCursorScreenPos();
+    drawList->ChannelsSetCurrent(0);
+    const bool active = enabled == nullptr || *enabled;
+    const ImVec2 clipMin = drawList->GetClipRectMin();
+    const ImVec2 clipMax = drawList->GetClipRectMax();
+    drawList->PushClipRect(
+        ImVec2(std::min(clipMin.x, cardStart.x), clipMin.y),
+        ImVec2(std::max(clipMax.x, cardStart.x + cardWidth), clipMax.y), false);
+    drawList->AddRectFilled(
+        cardStart, ImVec2(cardStart.x + cardWidth, cardEnd.y),
+        ImGui::GetColorU32(active ? ImVec4(0.86f, 0.90f, 0.98f, 0.075f)
+                                  : ImVec4(0.86f, 0.90f, 0.98f, 0.04f)),
+        14.0f * scale);
+    drawList->AddRect(
+        cardStart, ImVec2(cardStart.x + cardWidth, cardEnd.y),
+        ImGui::GetColorU32(active ? ImVec4(0.88f, 0.92f, 1.0f, 0.14f)
+                                  : ImVec4(0.88f, 0.92f, 1.0f, 0.08f)),
+        14.0f * scale, ImDrawFlags_RoundCornersAll, 1.0f * scale);
+    drawList->PopClipRect();
+
+    drawList->ChannelsMerge();
+    ImGui::PopID();
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + cardSpacing);
+    return pressed;
+}
+
 void UIManager::draw() {
 #ifdef SILICATE_PROTECT
     VMProtectBegin("UIDraw");
@@ -727,8 +787,24 @@ void UIManager::draw() {
     };
 
     cfg.uiScale = m_state.m_uiScale->inner() * getWindowDpi();
+    const bool visible = m_state.m_visible->inner();
 
-    if (!m_state.m_visible->inner()) {
+    if (m_state.m_playAnimations->inner()) {
+        const float visibilityStep = ImGui::GetIO().DeltaTime *
+                                     static_cast<float>(cfg.animationSpeed) /
+                                     0.18f;
+        if (visible) {
+            m_visibilityProgress =
+                std::min(1.0f, m_visibilityProgress + visibilityStep);
+        } else {
+            m_visibilityProgress =
+                std::max(0.0f, m_visibilityProgress - visibilityStep);
+        }
+    } else {
+        m_visibilityProgress = visible ? 1.0f : 0.0f;
+    }
+
+    if (!visible) {
         auto view = CCEGLView::get();
 
         auto pl = PlayLayer::get();
@@ -739,10 +815,16 @@ void UIManager::draw() {
         }
 
         view->showCursor(!shouldHide);
-        return;
+        if (m_visibilityProgress <= 0.0f) {
+            return;
+        }
+    } else {
+        CCEGLView::get()->showCursor(true);
     }
 
-    CCEGLView::get()->showCursor(true);
+    const float visibilityAlpha = m_visibilityProgress * m_visibilityProgress *
+                                  (3.0f - 2.0f * m_visibilityProgress);
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, visibilityAlpha);
 
     tabby::ScopedFont s(m_font);
     // clip all that start with m_state.m_replayName (case insensitive) (std)
@@ -965,10 +1047,20 @@ void UIManager::draw() {
                 tabby::checkbox("Intentional Death",
                                 Bot::get()->updater().m_canDie->inner());
 
+                slui::tooltip(
+                    "Record a death input in the replay. The next death or "
+                    "restart you perform will be saved as an action in the "
+                    "replay.");
+
                 if (m_state.m_showExperimentalFeatures) {
                     tabby::checkbox(
                         "Frame Extrapolation",
                         Bot::get()->updater().m_extrapolateFrames->inner());
+
+                    slui::tooltip(
+                        "Add additional visual frames in between physics ticks "
+                        "to allow for a smoother appearance of gameplay. Note "
+                        "that this has accuracy issues.");
                 }
 
                 tabby::divider();
@@ -976,13 +1068,18 @@ void UIManager::draw() {
                 tabby::checkbox("Seed Override",
                                 Bot::get()->replaySystem().m_overrideSeed);
 
-                animated(
-                    "SeedOverrideOptions",
-                    Bot::get()->replaySystem().m_overrideSeed, [&]() {
-                        tabby::drag("Seed",
-                                    Bot::get()->replaySystem().m_overriddenSeed,
-                                    0ull, std::numeric_limits<uint64_t>::max());
-                    });
+                slui::tooltip(
+                    "Force a specific seed to always be selected when entering "
+                    "a level. Note that the level seed is always saved in the "
+                    "replay, no matter if this option is enabled or not.");
+
+                animated("SeedOverrideOptions",
+                         Bot::get()->replaySystem().m_overrideSeed, [&]() {
+                             tabby::drag(
+                                 "Seed",
+                                 Bot::get()->replaySystem().m_overriddenSeed,
+                                 0ull, std::numeric_limits<uint64_t>::max());
+                         });
             });
 
             tabby::tab(m_state.m_currentTab, UIState::UITab::Assist, [&]() {
@@ -990,32 +1087,36 @@ void UIManager::draw() {
 
                 tabby::divider(false);
 
-                tabby::text("Hitboxes", m_medium);
-
-                tabby::checkbox("Toggle##Hitboxes",
-                                Bot::get()->hitboxes().m_enabled->inner());
-
-                animated(
-                    "HitboxOptions", Bot::get()->hitboxes().m_enabled->inner(),
+                auto& hitboxesEnabled =
+                    Bot::get()->hitboxes().m_enabled->inner();
+                settingsCard(
+                    "HitboxesCard", "Hitboxes", &hitboxesEnabled, m_medium,
                     [&]() {
                         tabby::checkbox(
                             "Show Trail##Hitboxes",
                             Bot::get()->hitboxes().m_trailEnabled->inner());
 
-                        if (Bot::get()->hitboxes().m_trailEnabled->inner())
-                        {
-                            tabby::checkbox("Player Hitbox Above Trail##Hitboxes",
-                                            Bot::get()->hitboxes().m_playerAbove->inner());
-                            tabby::checkbox("Rotated Hitbox Above Trail##Hitboxes",
-                                            Bot::get()->hitboxes().m_rotatedAbove->inner());
+                        if (Bot::get()->hitboxes().m_trailEnabled->inner()) {
+                            tabby::checkbox(
+                                "Player Hitbox Above Trail##Hitboxes",
+                                Bot::get()->hitboxes().m_playerAbove->inner());
+                            tabby::checkbox(
+                                "Rotated Hitbox Above Trail##Hitboxes",
+                                Bot::get()->hitboxes().m_rotatedAbove->inner());
                             tabby::drag("Trail Optimization Factor##Hitboxes",
-                                        Bot::get()->hitboxes().m_optimizationFactor->inner(), 0.f, 100.f,
-                                        0.05f, "{:.2f}");
+                                        Bot::get()
+                                            ->hitboxes()
+                                            .m_optimizationFactor->inner(),
+                                        0.f, 100.f, 0.05f, "{:.2f}");
+                            slui::tooltip(
+                                "Controls trail sampling resolution. Lower "
+                                "values merge more nearby segments for better "
+                                "performance; higher values preserve detail.");
                         }
 
                         tabby::drag("Width##Hitboxes",
-                                    Bot::get()->hitboxes().m_width->inner(), 0.0, 1.0,
-                                    0.02f, "{:.2f}");
+                                    Bot::get()->hitboxes().m_width->inner(),
+                                    0.0, 1.0, 0.02f, "{:.2f}");
 
                         tabby::dropdown(
                             "Hitbox##Selector", m_state.m_hitboxState,
@@ -1052,66 +1153,46 @@ void UIManager::draw() {
                                 },
                                 false);
                         }
-                    },
-                    false);
+                    });
 
-                tabby::divider();
+                auto& layoutEnabled =
+                    Bot::get()->updater().m_layoutMode->inner();
+                if (settingsCard(
+                        "LayoutCard", "Layout", &layoutEnabled, m_medium,
+                        [&]() {
+                            tabby::checkbox(
+                                "Use Regular Background##LayoutMode",
+                                Bot::get()->updater().m_useRegularBg->inner());
 
-                tabby::text("Layout", m_medium);
+                            tabby::color("Background Color##LayoutMode",
+                                         m_state.m_bgColorState, popupShaderFn);
+                            tabby::color("Ground Color##LayoutMode",
+                                         m_state.m_groundColorState,
+                                         popupShaderFn);
 
-                if (tabby::checkbox("Enabled##LayoutMode",
-                                    Bot::get()->updater().m_layoutMode->inner())
-                        .pressed) {
+                            SLSettings::get()->layoutBgColor =
+                                m_state.m_bgColorState.colors;
+                            SLSettings::get()->layoutGroundColor =
+                                m_state.m_groundColorState.colors;
+                        })) {
                     Bot::get()->updater().m_layoutMode->notifyChange();
                 }
 
-                animated(
-                    "LayoutOptions",
-                    Bot::get()->updater().m_layoutMode->inner(), [&]() {
-                        tabby::checkbox(
-                            "Use Regular Background##LayoutMode",
-                            Bot::get()->updater().m_useRegularBg->inner());
+                auto& noclipEnabled = Bot::get()->updater().m_noclip->inner();
+                settingsCard("NoclipCard", "Noclip", &noclipEnabled, m_medium,
+                             [&]() {
+                                 tabby::dropdown(
+                                     "Player##Noclip", m_state.m_noclipState,
+                                     *reinterpret_cast<int*>(
+                                         &Bot::get()->updater().m_noclipType),
+                                     popupShaderFn);
+                             });
 
-                        tabby::color("Background Color##LayoutMode",
-                                     m_state.m_bgColorState, popupShaderFn);
-                        tabby::color("Ground Color##LayoutMode",
-                                     m_state.m_groundColorState, popupShaderFn);
-
-                        SLSettings::get()->layoutBgColor =
-                            m_state.m_bgColorState.colors;
-                        SLSettings::get()->layoutGroundColor =
-                            m_state.m_groundColorState.colors;
-                    });
-
-                tabby::divider();
-
-                tabby::text("Noclip", m_medium);
-
-                // god i hate working on this. Rust release me
-                tabby::checkbox("Enabled##Noclip",
-                                Bot::get()->updater().m_noclip->inner());
-
-                animated(
-                    "NoclipOptions", Bot::get()->updater().m_noclip->inner(),
-                    [&]() {
-                        tabby::dropdown(
-                            "Player##Noclip", m_state.m_noclipState,
-                            *reinterpret_cast<int*>(
-                                &Bot::get()->updater().m_noclipType),
-                            popupShaderFn);
-                    });
-
-                tabby::divider();
-
-                tabby::text("Trajectory", m_medium);
-
-                tabby::checkbox(
-                    "Enabled##Trajectory",
-                    Bot::get()->trajectory().m_state.m_enabled->inner());
-                animated(
-                    "TrajectoryOptions",
-                    Bot::get()->trajectory().m_state.m_enabled->inner(),
-                    [&]() {
+                auto& trajectoryEnabled =
+                    Bot::get()->trajectory().m_state.m_enabled->inner();
+                settingsCard(
+                    "TrajectoryCard", "Trajectory", &trajectoryEnabled,
+                    m_medium, [&]() {
                         tabby::drag(
                             "Width##Trajectory",
                             Bot::get()->trajectory().m_state.m_width->inner(),
@@ -1152,20 +1233,13 @@ void UIManager::draw() {
                                 },
                                 false);
                         }
-                    },
-                    false);
+                    });
 
-                tabby::divider();
-
-                tabby::text("Backstepping", m_medium);
-
-                tabby::checkbox(
-                    "Backwards Stepping",
-                    Bot::get()->updater().m_backwardsStepping->inner());
-
-                animated(
-                    "BacksteppingOptions",
-                    Bot::get()->updater().m_backwardsStepping->inner(), [&]() {
+                auto& backsteppingEnabled =
+                    Bot::get()->updater().m_backwardsStepping->inner();
+                settingsCard(
+                    "BacksteppingCard", "Backstepping", &backsteppingEnabled,
+                    m_medium, [&]() {
                         if (tabby::drag("Steps",
                                         Bot::get()
                                             ->practiceFix()
@@ -1181,15 +1255,11 @@ void UIManager::draw() {
                 // tabby::checkbox("Run Full Updates",
                 // Bot::get()->updater().m_fullGamePrediction->inner());
 
-                tabby::divider();
-
-                tabby::text("Autoclicker", m_medium);
-
-                tabby::checkbox("Enabled##Autoclicker",
-                                Bot::get()->autoclicker().m_enabled->inner());
-                animated(
-                    "AutoclickerOptions",
-                    Bot::get()->autoclicker().m_enabled->inner(), [&]() {
+                auto& autoclickerEnabled =
+                    Bot::get()->autoclicker().m_enabled->inner();
+                settingsCard(
+                    "AutoclickerCard", "Autoclicker", &autoclickerEnabled,
+                    m_medium, [&]() {
                         tabby::drag("Interval##Autoclicker",
                                     Bot::get()->autoclicker().m_frequency, 0,
                                     std::numeric_limits<int>::max(), 1.0f,
@@ -1197,6 +1267,10 @@ void UIManager::draw() {
                         tabby::checkbox(
                             "Swift Clicks",
                             Bot::get()->autoclicker().m_performSwifts);
+                        slui::tooltip(
+                            "Releases each click on the same frame instead of "
+                            "alternating between a press and release every "
+                            "interval.");
                         tabby::dropdown(
                             "Player##Autoclicker", m_state.m_autoclickerState,
                             *reinterpret_cast<int*>(
@@ -1204,25 +1278,29 @@ void UIManager::draw() {
                             popupShaderFn);
                     });
 
-                tabby::divider();
+                settingsCard("OtherCard", "Other", nullptr, m_medium, [&]() {
+                    tabby::checkbox("Mirror Inputs",
+                                    Bot::get()->replaySystem().m_mirrorInputs);
+                    animated(
+                        "MirrorOptions",
+                        Bot::get()->replaySystem().m_mirrorInputs, [&]() {
+                            tabby::checkbox(
+                                "Mirror Inverted",
+                                Bot::get()->replaySystem().m_mirrorInverted);
+                        });
 
-                tabby::text("Other", m_medium);
+                    tabby::checkbox(
+                        "Maintain Gravity",
+                        Bot::get()->replaySystem().m_maintainGravity);
 
-                tabby::checkbox("Mirror Inputs",
-                                Bot::get()->replaySystem().m_mirrorInputs);
-                animated(
-                    "MirrorOptions", Bot::get()->replaySystem().m_mirrorInputs,
-                    [&]() {
-                        tabby::checkbox(
-                            "Mirror Inverted",
-                            Bot::get()->replaySystem().m_mirrorInverted);
-                    });
+                    slui::tooltip(
+                        "Perform wave inputs correctly, so that no matter the "
+                        "gravity, the wave can always be controlled as if it "
+                        "was normal gravity.");
 
-                tabby::checkbox("Maintain Gravity",
-                                Bot::get()->replaySystem().m_maintainGravity);
-
-                tabby::checkbox("No Mirror Portals",
-                                Bot::get()->updater().m_noMirror->inner());
+                    tabby::checkbox("No Mirror Portals",
+                                    Bot::get()->updater().m_noMirror->inner());
+                });
             });
 
             tabby::tab(m_state.m_currentTab, UIState::UITab::Prediction, [&]() {
@@ -1234,9 +1312,19 @@ void UIManager::draw() {
 
                 tabby::checkbox("Prevent Death",
                                 Bot::get()->updater().m_preventDeath->inner());
+
+                slui::tooltip(
+                    "Prevent the player from dying, by pausing the game a "
+                    "frame earlier. Requires backstepping to be enabled.");
+
                 tabby::checkbox(
                     "Use Trajectory##PD",
                     Bot::get()->updater().m_fullGamePrediction->inner());
+
+                slui::tooltip(
+                    "Whether to use trajectory to simulate forward to check if "
+                    "the player has died instead of using backwards stepping "
+                    "when the player has died.");
                 // tabby::checkbox("Auto Flip On Death",
                 // Bot::get()->updater().m_autoFlipOnDeath->inner());
 
@@ -1248,10 +1336,20 @@ void UIManager::draw() {
                     Bot::get()->updater().findBestFrameCandidate();
                 }
 
+                slui::tooltip(
+                    "When performing the next input, find the frame the player "
+                    "would survive the longest had the input been performed. "
+                    "Requires backstepping to be enabled.");
+
                 tabby::drag(
                     "Threshold##Prediction",
                     Bot::get()->updater().m_acceptablePrediction->inner(), 0.0f,
                     1.0f, 0.01f, "{:.2f}");
+
+                slui::tooltip(
+                    "A fraction of your trajectory length to use for Find Best "
+                    "Frame. When a frame that survives that long is found, go "
+                    "to that frame and consider the best frame found.");
 
                 // tabby::divider();
 
@@ -1474,134 +1572,180 @@ void UIManager::draw() {
                     return;
                 }
 
-                if (renderer->m_autoVideoName->inner()) {
-                    tabby::input_text(
-                        "Video Template", "Template",
-                        Renderer::get()->m_videoNameTemplate->inner());
-                } else {
-                    tabby::input_text("Video Name", "Video",
-                                      Renderer::get()->m_settings.m_outputPath);
-                }
+                settingsCard(
+                    "RenderOtherCard", "Controls", nullptr, m_medium, [&]() {
+                        if (renderer->m_autoVideoName->inner()) {
+                            tabby::input_text(
+                                "Video Template", "Template",
+                                Renderer::get()->m_videoNameTemplate->inner());
 
-                tabby::checkbox("Auto Video Name",
-                                renderer->m_autoVideoName->inner());
-
-                if (renderer->isRecording()) {
-                    if (tabby::button("Stop").pressed) {
-                        renderer->signalStop();
-                    }
-                } else {
-                    if (!PlayLayer::get() && !renderer->m_shouldStart) {
-                        if (tabby::button("Start").pressed) {
-                            renderer->queueStart();
+                            slui::tooltip(
+                                "Template to automatically generate "
+                                "video titles.\n\nAvailable templates:"
+                                "\n\%rand\% - a random number."
+                                "\n\%name\% - The level name."
+                                "\n\%difficulty\% - The difficulty "
+                                "of the level."
+                                "\n\%id\% - The ID of the level."
+                                "\n\%creator\% - The name of the "
+                                "creator of the level.");
+                        } else {
+                            tabby::input_text(
+                                "Video Name", "Video",
+                                Renderer::get()->m_settings.m_outputPath);
                         }
-                    } else if (renderer->m_shouldStart) {
-                        tabby::text("Waiting to enter level...");
-                    } else if (PlayLayer::get()) {
-                        if (tabby::button("Start Here").pressed) {
+
+                        tabby::checkbox("Auto Video Name",
+                                        renderer->m_autoVideoName->inner());
+
+                        if (renderer->isRecording()) {
+                            if (tabby::button("Stop").pressed) {
+                                renderer->signalStop();
+                            }
+                        } else if (!PlayLayer::get() &&
+                                   !renderer->m_shouldStart) {
+                            if (tabby::button("Start").pressed) {
+                                renderer->queueStart();
+                            }
+                        } else if (renderer->m_shouldStart) {
+                            tabby::text("Waiting to enter level...");
+                        } else if (PlayLayer::get() &&
+                                   tabby::button("Start Here").pressed) {
                             (void)renderer->start();
                         }
-                    }
-                }
+
+                        tabby::checkbox("Auto Exit on Finish",
+                                        renderer->m_autoExitLevel->inner());
+                        slui::tooltip(
+                            "Automatically leave the level when "
+                            "finishing a render.");
+                    });
+
+                settingsCard(
+                    "RenderPresetsCard", "Presets", nullptr, m_medium, [&]() {
+                        tabby::input_text_autocomplete(
+                            "Preset Name", "Preset", m_state.m_presetName,
+                            m_state.m_presetAutocomplete, popupShaderFn);
+
+                        tabby::fraction(2.0, [&]() {
+                            if (tabby::button("Load##Preset").pressed) {
+                                auto path = Mod::get()->getPersistentDir() /
+                                            "presets" /
+                                            (m_state.m_presetName + ".json");
+                                if (std::filesystem::exists(path)) {
+                                    renderer->loadSettings(path);
+                                } else {
+                                    geode::log::error(
+                                        "Preset file does not exist: "
+                                        "{}",
+                                        path.string());
+                                }
+                            }
+
+                            tabby::same_line();
+
+                            if (tabby::button("Save##Preset").pressed) {
+                                auto path = Mod::get()->getPersistentDir() /
+                                            "presets" /
+                                            (m_state.m_presetName + ".json");
+                                renderer->saveSettings(path);
+                            }
+                        });
+                    });
+
+                settingsCard(
+                    "RenderVideoCard", "Video", nullptr, m_medium, [&]() {
+                        tabby::fraction(
+                            2.0,
+                            [&]() {
+                                tabby::drag("Width",
+                                            renderer->m_settings.m_width, 1,
+                                            10000, 1.0f);
+                                tabby::spacer(16.0);
+                                tabby::drag("Height",
+                                            renderer->m_settings.m_height, 1,
+                                            10000, 1.0f);
+
+                                tabby::drag("FPS", renderer->m_settings.m_fps,
+                                            1, 1000, 1.0f);
+                                tabby::spacer(16.0);
+                                if (tabby::drag("Bitrate", m_state.m_bitrate,
+                                                0.0, 10000.0, 1.0f, "{:g}Mbps")
+                                        .changed) {
+                                    renderer->m_settings.m_bitrate = std::round(
+                                        m_state.m_bitrate * 1'000'000.0);
+                                }
+                            },
+                            16.0);
+
+                        tabby::input_text("Codec", "Codec",
+                                          renderer->m_settings.m_codec);
+                        tabby::input_text("Extension", "Extension",
+                                          renderer->m_settings.m_extension);
+                    });
 
                 auto ar = AudioRecorder::get();
-                tabby::checkbox("Audio Preview", ar->m_audioPreview->inner());
-                tabby::checkbox("Auto Exit on Finish",
-                                renderer->m_autoExitLevel->inner());
+                settingsCard("RenderAudioCard", "Audio", nullptr, m_medium,
+                             [&]() {
+                                 tabby::checkbox("Audio Preview",
+                                                 ar->m_audioPreview->inner());
 
-                tabby::divider();
+                                 tabby::drag("Music Volume",
+                                             renderer->m_settings.m_musicVolume,
+                                             0.0, 1.0, 0.01, "{:.2f}");
+                                 tabby::drag("SFX Volume",
+                                             renderer->m_settings.m_sfxVolume,
+                                             0.0, 1.0, 0.01, "{:.2f}");
+                             });
 
-                tabby::text("Presets", m_medium);
-
-                tabby::input_text_autocomplete(
-                    "Preset Name", "Preset", m_state.m_presetName,
-                    m_state.m_presetAutocomplete, popupShaderFn);
-
-                tabby::fraction(2.0, [&]() {
-                    if (tabby::button("Load##Preset").pressed) {
-                        auto path = Mod::get()->getPersistentDir() / "presets" /
-                                    (m_state.m_presetName + ".json");
-                        if (std::filesystem::exists(path)) {
-                            renderer->loadSettings(path);
-                        } else {
-                            geode::log::error("Preset file does not exist: {}",
-                                              path.string());
-                        }
-                    }
-
-                    tabby::same_line();
-
-                    if (tabby::button("Save##Preset").pressed) {
-                        auto path = Mod::get()->getPersistentDir() / "presets" /
-                                    (m_state.m_presetName + ".json");
-                        renderer->saveSettings(path);
-                    }
-                });
-
-                tabby::divider();
-
-                tabby::text("Video Settings", m_medium);
-
-                tabby::fraction(
-                    2.0,
-                    [&]() {
-                        tabby::drag("Width", renderer->m_settings.m_width, 1,
-                                    10000, 1.0f);
-                        tabby::spacer(16.0);
-                        tabby::drag("Height", renderer->m_settings.m_height, 1,
-                                    10000, 1.0f);
-
-                        tabby::drag("FPS", renderer->m_settings.m_fps, 1, 1000,
-                                    1.0f);
-                        tabby::spacer(16.0);
-                        if (tabby::drag("Bitrate", m_state.m_bitrate, 0.0,
-                                        10000.0, 1.0f, "{:g}Mbps")
+                settingsCard(
+                    "RenderFadeCard", "Timing", nullptr, m_medium, [&]() {
+                        tabby::drag("Fade In Time",
+                                    renderer->m_settings.m_fadeInTime, 0.0,
+                                    60.0, 0.1, "{:.1f}s");
+                        if (tabby::drag("Fade Out Time",
+                                        renderer->m_settings.m_fadeOutTime, 0.0,
+                                        60.0, 0.1, "{:.1f}s")
                                 .changed) {
-                            renderer->m_settings.m_bitrate =
-                                std::round(m_state.m_bitrate * 1'000'000.0);
+                            renderer->m_settings.m_afterEndTime = std::max(
+                                (float)renderer->m_settings.m_fadeOutTime,
+                                renderer->m_settings.m_afterEndTime);
                         }
-                    },
-                    16.0);
 
-                tabby::input_text("Codec", "Codec",
-                                  renderer->m_settings.m_codec);
-                tabby::input_text("Extension", "Extension",
-                                  renderer->m_settings.m_extension);
-                if (tabby::drag("After End Time",
-                            renderer->m_settings.m_afterEndTime, 0.0f, 10000.0f,
-                            1.0f, "{:.2f}s").changed) {
-                                renderer->m_settings.m_fadeOutTime = std::min(
-                                renderer->m_settings.m_fadeOutTime, (double)renderer->m_settings.m_afterEndTime);
-                            }
-                tabby::checkbox("SSB Fix",
-                            Bot::get()->updater().m_ssbFix->inner());
+                        if (tabby::drag("After End Time",
+                                        renderer->m_settings.m_afterEndTime,
+                                        0.0f, 10000.0f, 1.0f, "{:.2f}s")
+                                .changed) {
+                            renderer->m_settings.m_fadeOutTime = std::min(
+                                renderer->m_settings.m_fadeOutTime,
+                                (double)renderer->m_settings.m_afterEndTime);
+                        }
+                    });
 
-                tabby::drag("Music Volume", renderer->m_settings.m_musicVolume,
-                            0.0, 1.0, 0.01, "{:.2f}");
-                tabby::drag("SFX Volume", renderer->m_settings.m_sfxVolume, 0.0,
-                            1.0, 0.01, "{:.2f}");
+                settingsCard(
+                    "RenderAdvancedCard", "Advanced", nullptr, m_medium, [&]() {
+                        tabby::checkbox(
+                            "SSB Fix", Bot::get()->updater().m_ssbFix->inner());
+                        slui::tooltip(
+                            "Compensates audio timing for the game's scroll "
+                            "speed bug while rendering.");
 
-                tabby::drag("Fade In Time", renderer->m_settings.m_fadeInTime,
-                            0.0, 60.0, 0.1, "{:.1f}s");
-                if (tabby::drag("Fade Out Time", renderer->m_settings.m_fadeOutTime,
-                            0.0, 60.0, 0.1, "{:.1f}s").changed) {
-                                renderer->m_settings.m_afterEndTime = std::max(
-                                (float)renderer->m_settings.m_fadeOutTime, renderer->m_settings.m_afterEndTime);
-                            }
+                        if (m_state.m_showExperimentalFeatures) {
+                            tabby::drag("Visual FPS",
+                                        renderer->m_settings.m_visualFps, 1,
+                                        100000, 1.0f);
+                        }
+                        tabby::checkbox(
+                            "Record 1st Attempt Pause",
+                            renderer->m_settings.m_firstAttemptPause);
 
-                if (m_state.m_showExperimentalFeatures) {
-                    tabby::drag("Visual FPS", renderer->m_settings.m_visualFps, 1, 100000,
-                                1.0f);
-                }
-                tabby::checkbox("Record 1st Attempt Pause",
-                                renderer->m_settings.m_firstAttemptPause);
+                        tabby::checkbox(
+                            "Show Labels While Rendering",
+                            bot->updater().m_showLabelsWhileRendering->inner());
 
-                tabby::checkbox(
-                    "Show Labels While Rendering",
-                    bot->updater().m_showLabelsWhileRendering->inner());
-
-                tabby::input_text("FFmpeg Args", "-preset slow ...",
-                                  renderer->m_settings.m_renderArgs);
+                        tabby::input_text("FFmpeg Args", "-preset slow ...",
+                                          renderer->m_settings.m_renderArgs);
+                    });
             });
 
             // tabby::tab(m_state.m_currentTab, UIState::UITab::Scripts, [&]() {
@@ -1880,6 +2024,11 @@ void UIManager::draw() {
                     "Auto-Save At Level End",
                     Bot::get()->replaySystem().m_autosaveAtLevelEnd->inner());
 
+                slui::tooltip(
+                    "Whether to save the replay you're recording when "
+                    "completing the level. Note that if a replay like that "
+                    "already exists, it makes a backup instead.");
+
                 auto& rs = Bot::get()->replaySystem();
                 if (tabby::checkbox("Auto-Backup",
                                     Bot::get()
@@ -1889,16 +2038,15 @@ void UIManager::draw() {
                     rs.m_autosaveAtInterval->notifyChange();
                 }
 
-                animated(
-                    "AutoBackupOptions", rs.m_autosaveAtInterval->inner(),
-                    [&]() {
-                        if (tabby::drag("Auto-Backup Interval",
-                                        rs.m_autosaveInterval->inner(), 1.0,
-                                        3600.0, 1.0, "{:.0f}s")
-                                .changed) {
-                            rs.m_autosaveInterval->notifyChange();
-                        }
-                    });
+                animated("AutoBackupOptions", rs.m_autosaveAtInterval->inner(),
+                         [&]() {
+                             if (tabby::drag("Auto-Backup Interval",
+                                             rs.m_autosaveInterval->inner(),
+                                             1.0, 3600.0, 1.0, "{:.0f}s")
+                                     .changed) {
+                                 rs.m_autosaveInterval->notifyChange();
+                             }
+                         });
 
                 tabby::divider();
 
@@ -1980,19 +2128,27 @@ void UIManager::draw() {
 
                 tabby::checkbox("Lock Delta",
                                 bot->updater().m_lockDelta->inner());
-
-                tabby::dropdown("Lock Delta Mode", m_state.m_lockDeltaState,
-                                bot->updater().m_lockDeltaMode->inner(),
-                                popupShaderFn);
+                slui::tooltip(
+                    "Runs physics with a fixed delta time to improve replay "
+                    "consistency.");
 
                 tabby::checkbox("Real Time",
                                 bot->updater().m_realTime->inner());
+
+                slui::tooltip(
+                    "Removes any UPR restrictions and allows the game to have "
+                    "as many physics ticks as it wants per frame. This ensures "
+                    "no slowdown, although for laggier levels will show "
+                    "visible lag.");
 
                 animated(
                     "NonRealtimeOptions", !bot->updater().m_realTime->inner(),
                     [&]() {
                         tabby::checkbox("Dynamic UPR",
                                         bot->updater().m_dynamicUpr->inner());
+                        slui::tooltip(
+                            "Automatically adjusts the update limit per visual "
+                            "frame to maintain the target FPS.");
 
                         animated(
                             "DynamicUprOptions",
@@ -2011,9 +2167,20 @@ void UIManager::draw() {
                                             bot->updater().m_maxUPR->inner(),
                                             1u, 1000000u, 1.0f);
 
+                                slui::tooltip(
+                                    "How many physics ticks are allowed to run "
+                                    "per visual frame.");
+
                                 tabby::checkbox(
                                     "Use Visual Updates",
                                     bot->updater().m_useVisualUpdates->inner());
+
+                                slui::tooltip(
+                                    "Multiplies Max UPR with the expected "
+                                    "number of ticks per visual frame for your "
+                                    "current TPS. A max UPR of 1 with this "
+                                    "option on will result in real time "
+                                    "playback, minus lag.");
                             },
                             false);
                     },
@@ -2026,17 +2193,28 @@ void UIManager::draw() {
                 tabby::checkbox(
                     "Use Alternate Input Hook",
                     bot->replaySystem().m_useAlternateHook->inner());
+                slui::tooltip(
+                    "Records inputs directly from the button handler. This "
+                    "option is here for mod compatibility.");
 
                 if (tabby::button("Disable Bot").pressed) {
                     Bot::get()->m_enabled->inner() = false;
                     Bot::get()->m_enabled->notifyChange();
                     FMOD::ChannelGroup* master;
-                    FMODAudioEngine::get()->m_system->getMasterChannelGroup(&master);
+                    FMODAudioEngine::get()->m_system->getMasterChannelGroup(
+                        &master);
                     master->setPitch(1.0);
                 }
 
+                slui::tooltip(
+                    "Disable all of Silicate's features. Note that you must be "
+                    "outside of a level for this button to do anything.");
+
                 tabby::checkbox("Experimental Features",
                                 m_state.m_showExperimentalFeatures);
+                slui::tooltip(
+                    "Enables features that are not fully tested and may be "
+                    "unstable.");
             });
         });
 
@@ -2049,6 +2227,8 @@ void UIManager::draw() {
             ImDrawFlags_RoundCornersAll,
             2.5 * tabby::TabbyGlobalCfg::get().uiScale);
     });
+
+    ImGui::PopStyleVar();
 
 #ifdef SILICATE_PROTECT
     VMProtectEnd();

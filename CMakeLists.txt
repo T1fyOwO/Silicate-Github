@@ -42,6 +42,7 @@ add_library(${PROJECT_NAME} SHARED
     src/ui/manager.cpp
     src/ui/hook.cpp
     src/ui/theme.cpp
+    src/ui/widgets/tooltip.cpp
 
     src/replay/replay.cpp
     src/replay/system.cpp

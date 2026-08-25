@@ -25,6 +25,7 @@ class UIManager {
     double m_ffmpegDownloadProgress = -1.0;
 
     GLuint m_texture = 0;
+    float m_visibilityProgress = 0.0f;
 
     UIManager();
 

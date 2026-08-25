@@ -5,6 +5,7 @@
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/binding/PlayLayer.hpp>
 
+#include "Geode/cocos/CCDirector.h"
 #include "Geode/cocos/draw_nodes/CCDrawNode.h"
 #include "bot/bot.hpp"
 #include "ccTypes.h"
@@ -522,13 +523,20 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
             for (auto& unit : trail) {
                 if (!unit.shouldDraw(minX, maxX, minY, maxY)) continue;
 
+                auto d = cocos2d::CCDirector::get();
+                const float pointToPixelRatio = std::max(
+                    d->getWinSizeInPixels().width / d->getWinSize().width,
+                    d->getWinSizeInPixels().height / d->getWinSize().height);
+
                 // Collapse consecutive segments that map to the same on-screen
                 // pixel; keeps the trail as dense as the current zoom allows
                 // without overdrawing identical positions.
                 const int px = static_cast<int>(std::floor(
-                (unit.m_rect.getMidX() * scaleX + objX) * m_optimizationFactor->inner()));
+                    (unit.m_rect.getMidX() * scaleX + objX) *
+                    m_optimizationFactor->inner() * pointToPixelRatio));
                 const int py = static_cast<int>(std::floor(
-                (unit.m_rect.getMidY() * scaleY + objY) * m_optimizationFactor->inner()));
+                    (unit.m_rect.getMidY() * scaleY + objY) *
+                    m_optimizationFactor->inner() * pointToPixelRatio));
                 if (hasLast && px == lastPx && py == lastPy) continue;
                 hasLast = true;
                 lastPx = px;

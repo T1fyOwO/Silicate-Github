@@ -3,6 +3,7 @@
 #include <Zydis/Zydis.h>
 #include <immintrin.h>
 
+#include <Geode/Enums.hpp>
 #include <Geode/Geode.hpp>
 #include <Geode/modify/CCDirector.hpp>
 #include <Geode/modify/CCEGLView.hpp>
@@ -277,6 +278,34 @@ geode::Result<> Renderer::start() {
         namespace str = geode::utils::string;
 
         formatted = str::replace(formatted, "%name%", pl->m_level->m_levelName);
+
+#define GJ_DIFFICULTY(name)  \
+    case GJDifficulty::name: \
+        return #name;
+
+        constexpr auto convertDifficultyToName =
+            [](GJDifficulty d) -> std::string {
+            switch (d) {
+                GJ_DIFFICULTY(NA)
+                GJ_DIFFICULTY(Auto)
+                GJ_DIFFICULTY(Easy)
+                GJ_DIFFICULTY(Normal)
+                GJ_DIFFICULTY(Hard)
+                GJ_DIFFICULTY(Harder)
+                GJ_DIFFICULTY(Insane)
+                GJ_DIFFICULTY(Demon)
+                GJ_DIFFICULTY(DemonEasy)
+                GJ_DIFFICULTY(DemonMedium)
+                GJ_DIFFICULTY(DemonInsane)
+                GJ_DIFFICULTY(DemonExtreme)
+            }
+        };
+
+#undef GJ_DIFFICULTY
+
+        formatted =
+            str::replace(formatted, "%difficulty%",
+                         convertDifficultyToName(pl->m_level->m_difficulty));
         formatted = str::replace(
             formatted, "%id%", std::to_string(pl->m_level->m_levelID.value()));
         formatted =
