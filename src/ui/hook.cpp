@@ -202,57 +202,134 @@ vec4 sampleBlur(vec2 texCoord) {
     return color;
 }
 
-vec4 sampleReflection(vec2 texCoord, float displacement) {
-    vec2 windowCenter = vec2(
-        (u_window.x + u_window.z) / 2.0,
-        (u_window.y + u_window.w) / 2.0
-    );
-
-    vec2 normal = windowCenter - texCoord;
-    vec2 reflectPos = texCoord + (normal * displacement);
-
-    vec2 sunDirection = normalize(vec2(0.4, -1.0));
-    //float specular = dot(normal, sunDirection) * 3.0;
-    float specular = 0.0;
-
-    vec4 reflected = texture2D(u_texture, reflectPos);
-    return mix(vec4(1.0, 1.0, 1.0, 1.0), vec4(reflected.xyz, 1.0), 1.0 - specular);
+void main() {
+    fragColor = sampleBlur(v_texCoord);
 }
+)";
 
-float roundedRectSDF(vec2 point, vec2 center, vec2 halfSize, float radius) {
-    vec2 q = abs(point - center) - halfSize + radius;
+static const char* GLASS_FRAG = R"(#version 130
+#extension GL_ARB_explicit_attrib_location : require
+#extension GL_ARB_explicit_uniform_location : require
 
-    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
-}
+in vec2 v_texCoord;
+out vec4 fragColor;
 
-vec4 sampleColor(vec2 texCoord) {
-    vec4 finalColor = vec4(0.0);
-    vec4 regularColor = vec4(texture2D(u_texture, texCoord).xyz, 1.0);
-    vec4 blurColor = vec4(sampleBlur(texCoord).xyz, 1.0);
+layout(location = 0) uniform sampler2D u_texture;
+layout(location = 1) uniform vec2 u_texelSize;
+layout(location = 3) uniform vec4 u_window;
+layout(location = 4) uniform float u_cornerRadius;
+layout(location = 5) uniform sampler2D u_scene;
 
-    float MAX_DISTANCE = 0.05;
-
+float roundedRectDistance(vec2 texCoord) {
+    vec2 framebufferSize = 1.0 / u_texelSize;
     vec2 center = (u_window.xy + u_window.zw) * 0.5;
-    vec2 halfSize = (u_window.zw - u_window.xy) * 0.5;
-    float radius = 0.06;
+    vec2 halfSize = (u_window.zw - u_window.xy) * framebufferSize * 0.5;
+    vec2 point = (texCoord - center) * framebufferSize;
+    float radius = min(u_cornerRadius, min(halfSize.x, halfSize.y));
+    vec2 q = abs(point) - halfSize + vec2(radius);
+    return length(max(q, vec2(0.0))) +
+           min(max(q.x, q.y), 0.0) - radius;
+}
 
-    float dst = 1.0 + roundedRectSDF(texCoord, center, halfSize, radius);
-    dst = dst - (1.0 - MAX_DISTANCE);
-    dst = dst / MAX_DISTANCE;
-
-    float intensity = clamp(dst, 0.0, 1.0);
-
-    vec4 reflectedColor = sampleReflection(texCoord, intensity * 0.7);
-    reflectedColor = mix(regularColor, reflectedColor, intensity - 0.3);
-
-    finalColor = mix(blurColor, reflectedColor, clamp(intensity, 0.0, 0.3));
-    return finalColor;
+vec2 roundedRectNormal(vec2 texCoord) {
+    float left = roundedRectDistance(texCoord - vec2(u_texelSize.x, 0.0));
+    float right = roundedRectDistance(texCoord + vec2(u_texelSize.x, 0.0));
+    float down = roundedRectDistance(texCoord - vec2(0.0, u_texelSize.y));
+    float up = roundedRectDistance(texCoord + vec2(0.0, u_texelSize.y));
+    vec2 gradient = vec2(right - left, up - down);
+    float magnitude = length(gradient);
+    return magnitude > 0.0001 ? gradient / magnitude : vec2(0.0, 1.0);
 }
 
 void main() {
-    fragColor = sampleColor(v_texCoord);
+    vec4 base = texture2D(u_texture, v_texCoord);
+    float distanceToEdge = roundedRectDistance(v_texCoord);
+    vec2 windowSizePixels = (u_window.zw - u_window.xy) / u_texelSize;
+    float sizeScale = clamp(120.0 / min(windowSizePixels.x,
+                                        windowSizePixels.y), 0.62, 1.3);
+    float edgeWidth = clamp(u_cornerRadius * 1.5, 6.0, 13.0) * sizeScale;
+    float edge = smoothstep(-edgeWidth, -0.2, distanceToEdge);
+    edge = edge * edge * (3.0 - 2.0 * edge);
+    float lens = pow(edge, 0.72);
+
+    vec2 normal = roundedRectNormal(v_texCoord);
+    float displacement = mix(2.0, 18.0 * sizeScale, lens * lens);
+    vec2 refractedCoord = clamp(
+        v_texCoord - normal * u_texelSize * displacement,
+        u_texelSize * 3.0, vec2(1.0) - u_texelSize * 3.0
+    );
+    vec2 chromaOffset = normal * u_texelSize * (0.6 * lens);
+    vec3 refracted = vec3(
+        texture2D(u_scene, refractedCoord + chromaOffset).r,
+        texture2D(u_scene, refractedCoord).g,
+        texture2D(u_scene, refractedCoord - chromaOffset).b
+    );
+
+    float luminance = dot(refracted, vec3(0.2126, 0.7152, 0.0722));
+    refracted = vec3(luminance) +
+                (refracted - vec3(luminance)) * 1.28;
+
+    vec2 reflectedCoord = clamp(
+        v_texCoord + normal * u_texelSize *
+            ((4.0 + 12.0 * lens) * sizeScale),
+        u_texelSize * 3.0, vec2(1.0) - u_texelSize * 3.0
+    );
+    vec3 reflected = texture2D(u_texture, reflectedCoord).rgb;
+    float reflectedLuminance = dot(reflected, vec3(0.2126, 0.7152, 0.0722));
+    reflected = mix(vec3(reflectedLuminance), reflected, 1.35) * 1.12;
+
+    float baseLuminance = dot(base.rgb, vec3(0.2126, 0.7152, 0.0722));
+    vec3 graded = vec3(baseLuminance) +
+                  (base.rgb - vec3(baseLuminance)) * 1.18;
+    graded = graded * vec3(0.96, 0.99, 1.06) + vec3(0.006, 0.010, 0.020);
+
+    vec3 color = mix(base.rgb, graded, 0.22);
+    color = mix(color, refracted, 0.88 * lens);
+    color = mix(color, reflected, 0.24 * lens * sizeScale);
+
+    fragColor = vec4(color, base.a);
 }
 )";
+
+static GLuint createProgram(const char* vertexSource,
+                            const char* fragmentSource) {
+    const GLuint vertex = compileShader(GL_VERTEX_SHADER, vertexSource);
+    const GLuint fragment = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
+    const GLuint program = glCreateProgram();
+    glAttachShader(program, vertex);
+    glAttachShader(program, fragment);
+    glLinkProgram(program);
+    glDeleteShader(vertex);
+    glDeleteShader(fragment);
+
+    GLint linked = GL_FALSE;
+    glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (linked != GL_TRUE) {
+        char infoLog[512];
+        glGetProgramInfoLog(program, sizeof(infoLog), nullptr, infoLog);
+        geode::log::error("failed to link glass shader: {}", infoLog);
+    }
+    return program;
+}
+
+static GLuint createGlassTexture(GLsizei width, GLsizei height) {
+    GLuint texture = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, nullptr);
+    return texture;
+}
+
+static void resizeGlassTexture(GLuint texture, GLsizei width, GLsizei height) {
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, nullptr);
+}
 
 void ImGuiHookCtx::init(cocos2d::CCEGLView* view) {
     auto* glfwWindow = view->getWindow();
@@ -328,23 +405,20 @@ void ImGuiHookCtx::init(cocos2d::CCEGLView* view) {
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFbo);
 
     m_blurPass.initialize();
+    m_glassProgram = createProgram(BLUR_VERT, GLASS_FRAG);
     // Bot::get()->ui().m_theme->initialize();
 
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    glGenTextures(1, &m_inputTex);
-    glBindTexture(GL_TEXTURE_2D, m_inputTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_blurPass.m_width,
-                 m_blurPass.m_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glBindTexture(GL_TEXTURE_2D, m_oldTex);
+    GLint oldTex = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTex);
+    m_inputTex = createGlassTexture(m_blurPass.m_width, m_blurPass.m_height);
+    m_sceneTex = createGlassTexture(m_blurPass.m_width, m_blurPass.m_height);
+    glBindTexture(GL_TEXTURE_2D, oldTex);
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_blurPass.m_fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D,
                            m_inputTex, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D,
+                           m_sceneTex, 0);
 
     glBindFramebuffer(GL_FRAMEBUFFER, oldFbo);
 
@@ -378,22 +452,20 @@ void ImGuiHookCtx::reinitForNewWindow(cocos2d::CCEGLView* view, HDC hdc,
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFbo);
 
     m_blurPass.initialize();
+    if (m_glassProgram != 0) glDeleteProgram(m_glassProgram);
+    m_glassProgram = createProgram(BLUR_VERT, GLASS_FRAG);
 
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    glGenTextures(1, &m_inputTex);
-    glBindTexture(GL_TEXTURE_2D, m_inputTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_blurPass.m_width,
-                 m_blurPass.m_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    GLint oldTex = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTex);
+    m_inputTex = createGlassTexture(m_blurPass.m_width, m_blurPass.m_height);
+    m_sceneTex = createGlassTexture(m_blurPass.m_width, m_blurPass.m_height);
+    glBindTexture(GL_TEXTURE_2D, oldTex);
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_blurPass.m_fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D,
                            m_inputTex, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D,
+                           m_sceneTex, 0);
 
     glBindFramebuffer(GL_FRAMEBUFFER, oldFbo);
 
@@ -420,17 +492,24 @@ void ImGuiHookCtx::handleResize(float width, float height) {
 
     Bot::get()->ui().m_theme->resize(width, height);
 
-    glBindTexture(GL_TEXTURE_2D, m_inputTex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_blurPass.m_width,
-                 m_blurPass.m_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    GLint oldTex = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTex);
+    resizeGlassTexture(m_inputTex, m_blurPass.m_width, m_blurPass.m_height);
+    resizeGlassTexture(m_sceneTex, m_blurPass.m_width, m_blurPass.m_height);
+    glBindTexture(GL_TEXTURE_2D, oldTex);
 }
 
-void ImGuiHookCtx::preSampleBlur(ImVec4 window) {
+void ImGuiHookCtx::preSampleBlur(ImVec4 window, float cornerRadius) {
     if (!m_inited) return;
 
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &m_oldFbo);
     glGetIntegerv(GL_CURRENT_PROGRAM, &m_oldProgram);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &m_oldActiveTexture);
+    glActiveTexture(GL_TEXTURE0);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &m_oldTex);
+    glActiveTexture(GL_TEXTURE1);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &m_oldTex1);
+    glActiveTexture(GL_TEXTURE0);
 
     glViewport(0, 0, m_blurPass.m_width, m_blurPass.m_height);
     glDisable(GL_SCISSOR_TEST);
@@ -441,6 +520,8 @@ void ImGuiHookCtx::preSampleBlur(ImVec4 window) {
                            m_blurPass.m_tex, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D,
                            m_inputTex, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D,
+                           m_sceneTex, 0);
 
     glReadBuffer(GL_BACK);
 
@@ -462,6 +543,7 @@ void ImGuiHookCtx::preSampleBlur(ImVec4 window) {
     glVertexAttribPointer(1, 2, GL_FLOAT, false, 20, (void*)8);
 
     m_windowPos = window;
+    m_cornerRadius = cornerRadius;
 }
 
 void ImGuiHookCtx::sampleBlurFirstPass() {
@@ -492,7 +574,18 @@ void ImGuiHookCtx::sampleBlurSecondPass() {
     glDrawBuffer(GL_COLOR_ATTACHMENT0);
 }
 
-void ImGuiHookCtx::sampleBlurPostprocess() {
+void ImGuiHookCtx::sampleBlurSnapshot() {
+    if (!m_inited) return;
+
+    glUseProgram(m_blurPass.m_program);
+    glUniform1i(0, 0);
+    glUniform2f(1, 1.0f / m_blurPass.m_width, 1.0f / m_blurPass.m_height);
+    glUniform2f(2, 0.0f, 0.0f);
+    glUniform4f(3, m_windowPos.x, m_windowPos.y, m_windowPos.z, m_windowPos.w);
+    glDrawBuffer(GL_COLOR_ATTACHMENT2);
+}
+
+void ImGuiHookCtx::sampleBlurPostprocessToInput() {
     if (!m_inited) return;
 
     glUseProgram(Bot::get()->ui().m_theme->m_postprocessPass.m_program);
@@ -504,13 +597,41 @@ void ImGuiHookCtx::sampleBlurPostprocess() {
     glUniform4f(3, m_windowPos.x, m_windowPos.y, m_windowPos.z, m_windowPos.w);
     glUniform1f(4, m_time);
 
-    glDrawBuffer(GL_COLOR_ATTACHMENT0);
+    glDrawBuffer(GL_COLOR_ATTACHMENT1);
+}
+
+static void configureGlassPass(ImGuiHookCtx& context, GLenum output) {
+    glUseProgram(context.m_glassProgram);
+    glUniform1i(0, 0);
+    glUniform2f(1, 1.0f / context.m_blurPass.m_width,
+               1.0f / context.m_blurPass.m_height);
+    glUniform4f(3, context.m_windowPos.x, context.m_windowPos.y,
+                context.m_windowPos.z, context.m_windowPos.w);
+    glUniform1f(4, context.m_cornerRadius /
+                       ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, context.m_sceneTex);
+    glActiveTexture(GL_TEXTURE0);
+    glUniform1i(5, 1);
+    glDrawBuffer(output);
+}
+
+void ImGuiHookCtx::sampleGlassToInput() {
+    configureGlassPass(*this, GL_COLOR_ATTACHMENT1);
+}
+
+void ImGuiHookCtx::sampleGlassToBlur() {
+    configureGlassPass(*this, GL_COLOR_ATTACHMENT0);
 }
 
 void ImGuiHookCtx::postSampleBlur() {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_oldFbo);
     glUseProgram(m_oldProgram);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, m_oldTex1);
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_oldTex);
+    glActiveTexture(m_oldActiveTexture);
 
     glEnable(GL_BLEND);
     glBlendEquation(GL_FUNC_ADD);

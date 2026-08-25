@@ -280,9 +280,9 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
     if (Renderer::get()->m_settings.m_fps > 0)
         visualFpsFactor =
             std::max(std::min(Renderer::get()->m_settings.m_visualFps,
-                    (int)Bot::get()->updater().getTps()) /
-                    Renderer::get()->m_settings.m_fps,
-                    1);
+                              (int)Bot::get()->updater().getTps()) /
+                         Renderer::get()->m_settings.m_fps,
+                     1);
 
     if (auto renderer = Renderer::get();
         renderer->isRecording() && renderer->m_collectAudio) {
@@ -292,7 +292,8 @@ void BotUpdater::runUpdates(std::function<void(float)> update, float realDt,
                       : 1.f);
     }
 
-    if (this->isPaused() && !Renderer::get()->isRecording()) {
+    if (this->isPaused() && !Renderer::get()->isRecording() && isPlayLayer &&
+        pl->m_started) {
         this->m_tpsOverflow = 0;
         m_respawnTimer = 0;
         if (this->consumeStep()) {

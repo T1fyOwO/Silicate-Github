@@ -98,7 +98,8 @@ class SLBindingManager {
         m_hasRead = true;
 
         std::vector<RawKeybind> vec;
-        auto ec = glz::read_file_json(vec, path.string(), std::string{});
+        auto ec = glz::read_file_json(
+            vec, geode::utils::string::pathToString(path), std::string{});
         if (ec) {
             std::string helpful = glz::format_error(ec, std::string{});
             geode::log::error(
@@ -147,12 +148,12 @@ class SLBindingManager {
 
         if (keybind::isModifierKey(keyCode)) return;
 
-        if (keyCode == 0x1B) { // escape
+        if (keyCode == 0x1B) {  // escape
             this->stopEdit();
             return;
         }
 
-        if (keyCode == 0x08 || keyCode == 0x2E) { // backspace, delete
+        if (keyCode == 0x08 || keyCode == 0x2E) {  // backspace, delete
             keyCode = 0;
             shift = ctrl = alt = false;
         }
@@ -197,7 +198,8 @@ class SLBindingManager {
 
         for (const auto& tag : m_values | std::views::keys) {
             // haha
-            if (tag.starts_with('_') || tag.find("_______") != std::string::npos)
+            if (tag.starts_with('_') ||
+                tag.find("_______") != std::string::npos)
                 continue;
             tags.push_back(tag);
         }
@@ -218,8 +220,8 @@ class SLBindingManager {
     KeybindControl* retagKeybind(KeybindControl* kb, const std::string& tag) {
         if (kb == nullptr || kb->getTag() == tag) return nullptr;
 
-        RawKeybind raw{kb->m_key,   kb->m_modifiers, tag,
-                       kb->getType(), kb->isActive(), kb->toString()};
+        RawKeybind raw{kb->m_key,     kb->m_modifiers, tag,
+                       kb->getType(), kb->isActive(),  kb->toString()};
 
         auto replacement = this->makeKeybind(raw);
         if (!replacement) return nullptr;

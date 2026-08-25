@@ -30,7 +30,7 @@ void RenderPass::initialize() {
 #endif
 
     int oldTex;
-    glGetIntegerv(GL_TEXTURE_2D, &oldTex);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTex);
     glGenTextures(1, &m_tex);
     glBindTexture(GL_TEXTURE_2D, m_tex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_width, m_height, 0, GL_RGBA,
@@ -48,6 +48,8 @@ void RenderPass::initialize() {
                            m_tex, 0);
 
     if (m_vertexShader == 0 || m_fragmentShader == 0) {
+        glBindFramebuffer(GL_FRAMEBUFFER, oldFbo);
+        glBindTexture(GL_TEXTURE_2D, oldTex);
         return;  // don't initialize if no shaders provided
     }
 
@@ -58,6 +60,14 @@ void RenderPass::initialize() {
     glAttachShader(m_program, vs);
     glAttachShader(m_program, fs);
     glLinkProgram(m_program);
+
+    GLint linked = GL_FALSE;
+    glGetProgramiv(m_program, GL_LINK_STATUS, &linked);
+    if (linked != GL_TRUE) {
+        char infoLog[512];
+        glGetProgramInfoLog(m_program, sizeof(infoLog), nullptr, infoLog);
+        geode::log::error("failed to link shader program: {}", infoLog);
+    }
 
     glDeleteShader(vs);
     glDeleteShader(fs);

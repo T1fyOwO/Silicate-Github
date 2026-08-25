@@ -211,7 +211,7 @@ void ReplaySystem::backupExisting(std::filesystem::path path) {
         return;
     }
 
-    std::string name = path.stem().string();
+    std::string name = geode::utils::string::pathToString(path.stem());
     auto newPath = createBackupPath(name);
     std::filesystem::copy(path, newPath,
                           std::filesystem::copy_options::skip_existing);

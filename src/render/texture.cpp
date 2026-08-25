@@ -35,12 +35,12 @@ void RenderTexture::init(std::unique_ptr<Colorspace> colorspace) {
 
     m_bufferSize = m_colorspace->getBufferSize();
 
-    constexpr size_t kEncoderReadPadding = 2 * AV_INPUT_BUFFER_PADDING_SIZE;
+    constexpr size_t ENCODER_READ_PADDING = 2 * AV_INPUT_BUFFER_PADDING_SIZE;
 
     glGenBuffers(RING_SIZE, m_pbo);
     for (int i = 0; i < RING_SIZE; ++i) {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pbo[i]);
-        glBufferData(GL_PIXEL_PACK_BUFFER, m_bufferSize + kEncoderReadPadding,
+        glBufferData(GL_PIXEL_PACK_BUFFER, m_bufferSize + ENCODER_READ_PADDING,
                      nullptr, GL_STREAM_READ);
         m_slotMapped[i] = false;
         m_slotData[i] = nullptr;

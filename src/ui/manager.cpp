@@ -1,11 +1,13 @@
 #include "manager.hpp"
 
+#include <imgui_internal.h>
 #include <winuser.h>
 
 #include <Geode/Enums.hpp>
 #include <Geode/Geode.hpp>
 #include <algorithm>
 #include <cctype>
+#include <deque>
 #include <slc/formats/v3/atom.hpp>
 #include <slc/formats/v3/replay.hpp>
 #include <tabby.hpp>
@@ -445,15 +447,27 @@ void UIManager::reinitThemeGraphics() {
     }
 }
 
+struct BlurEffectParams {
+    ImVec4 rect;
+    float cornerRadius;
+};
+
+static std::deque<BlurEffectParams> s_blurEffectParams;
+
 static void preDrawBlurEffect(const ImDrawList*, const ImDrawCmd* cmd) {
     auto pos = ImGui::GetDrawData()->DisplayPos;
     auto sz = ImGui::GetDrawData()->DisplaySize;
+    const auto* params =
+        static_cast<const BlurEffectParams*>(cmd->UserCallbackData);
+    const ImVec4 rect = params != nullptr
+                            ? params->rect
+                            : ImVec4(cmd->ClipRect.x, cmd->ClipRect.y,
+                                     cmd->ClipRect.z, cmd->ClipRect.w);
 
     ImGuiHookCtx::get().preSampleBlur(
-        ImVec4((cmd->ClipRect.x - pos.x) / sz.x,
-               1.0 - ((cmd->ClipRect.w - pos.y) / sz.y),
-               (cmd->ClipRect.z - pos.x) / sz.x,
-               1.0 - ((cmd->ClipRect.y - pos.y) / sz.y)));
+        ImVec4((rect.x - pos.x) / sz.x, 1.0 - ((rect.w - pos.y) / sz.y),
+               (rect.z - pos.x) / sz.x, 1.0 - ((rect.y - pos.y) / sz.y)),
+        params != nullptr ? params->cornerRadius : 0.0f);
 }
 
 static void drawBlurEffectFirstPass(const ImDrawList*, const ImDrawCmd*) {
@@ -464,8 +478,20 @@ static void drawBlurEffectSecondPass(const ImDrawList*, const ImDrawCmd*) {
     ImGuiHookCtx::get().sampleBlurSecondPass();
 }
 
-static void drawPostprocess(const ImDrawList*, const ImDrawCmd*) {
-    ImGuiHookCtx::get().sampleBlurPostprocess();
+static void drawBlurSnapshot(const ImDrawList*, const ImDrawCmd*) {
+    ImGuiHookCtx::get().sampleBlurSnapshot();
+}
+
+static void drawPostprocessToInput(const ImDrawList*, const ImDrawCmd*) {
+    ImGuiHookCtx::get().sampleBlurPostprocessToInput();
+}
+
+static void drawGlassToInput(const ImDrawList*, const ImDrawCmd*) {
+    ImGuiHookCtx::get().sampleGlassToInput();
+}
+
+static void drawGlassToBlur(const ImDrawList*, const ImDrawCmd*) {
+    ImGuiHookCtx::get().sampleGlassToBlur();
 }
 
 static void postDrawBlurEffect(const ImDrawList*, const ImDrawCmd*) {
@@ -508,13 +534,16 @@ static void renderBlurBg(float rounding = 24.0f, float borderSize = 2.5f,
     cocos2d::CCSize frameSize = cocos2d::CCSize(ImGuiHookCtx::get().m_width,
                                                 ImGuiHookCtx::get().m_height);
 
-    drawList->AddCallback(&preDrawBlurEffect, nullptr);
-
     const float edgeInset = borderSize * 0.5f;
     ImVec2 origin_pos = ImGui::GetWindowPos() + ImVec2(edgeInset, edgeInset);
     ImVec2 dest_pos = ImGui::GetWindowPos() + ImGui::GetWindowSize() -
                       ImVec2(edgeInset, edgeInset);
     const float innerRounding = std::max(0.0f, rounding - edgeInset);
+
+    s_blurEffectParams.push_back(
+        {.rect = ImVec4(origin_pos.x, origin_pos.y, dest_pos.x, dest_pos.y),
+         .cornerRadius = innerRounding});
+    drawList->AddCallback(&preDrawBlurEffect, &s_blurEffectParams.back());
 
     float origin_uv_x = origin_pos.x / ImGuiHookCtx::get().m_blurPass.m_width /
                         ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR;
@@ -536,25 +565,50 @@ static void renderBlurBg(float rounding = 24.0f, float borderSize = 2.5f,
             ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
             {-1.0, -1.0}, {1.0, 1.0});
 
-        if (i == SAMPLE_COUNT - 1 && pp) {
-            drawList->AddCallback(&drawPostprocess, nullptr);
-        } else {
-            drawList->AddCallback(&drawBlurEffectSecondPass, nullptr);
-        }
+        drawList->AddCallback(&drawBlurEffectSecondPass, nullptr);
 
         drawList->AddImage(
             ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_inputTex),
             {-1.0, -1.0}, {1.0, 1.0});
+
+        // Keep a moderately blurred layer for visible but never sharp
+        // refraction. The final layer remains more heavily blurred.
+        if (i == 1) {
+            drawList->AddCallback(&drawBlurSnapshot, nullptr);
+            drawList->AddImage(
+                ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
+                {-1.0, -1.0}, {1.0, 1.0});
+        }
+    }
+
+    ImTextureID finalTexture;
+    if (pp) {
+        drawList->AddCallback(&drawPostprocessToInput, nullptr);
+        drawList->AddImage(
+            ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
+            {-1.0, -1.0}, {1.0, 1.0});
+
+        drawList->AddCallback(&drawGlassToBlur, nullptr);
+        drawList->AddImage(
+            ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_inputTex),
+            {-1.0, -1.0}, {1.0, 1.0});
+        finalTexture = (ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex;
+    } else {
+        drawList->AddCallback(&drawGlassToInput, nullptr);
+        drawList->AddImage(
+            ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
+            {-1.0, -1.0}, {1.0, 1.0});
+        finalTexture = (ImTextureID)ImGuiHookCtx::get().m_inputTex;
     }
 
     drawList->AddCallback(&postDrawBlurEffect, nullptr);
     drawList->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 
-    drawList->AddImageRounded(
-        ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
-        origin_pos, dest_pos, {origin_uv_x, origin_uv_y},
-        {dest_uv_x, dest_uv_y}, ImGui::GetColorU32(ImVec4(1.0, 1.0, 1.0, 1.0)),
-        innerRounding, ImDrawFlags_RoundCornersAll);
+    drawList->AddImageRounded(ImTextureRef(finalTexture), origin_pos, dest_pos,
+                              {origin_uv_x, origin_uv_y},
+                              {dest_uv_x, dest_uv_y},
+                              ImGui::GetColorU32(ImVec4(1.0, 1.0, 1.0, 1.0)),
+                              innerRounding, ImDrawFlags_RoundCornersAll);
 
     ImGui::GetWindowDrawList()->AddRectFilled(
         origin_pos, dest_pos,
@@ -833,6 +887,8 @@ void UIManager::draw() {
     VMProtectBegin("UIDraw");
 #endif
 
+    s_blurEffectParams.clear();
+
     auto bot = Bot::get();
     auto& cfg = tabby::TabbyGlobalCfg::get();
 
@@ -976,9 +1032,32 @@ void UIManager::draw() {
 
         tabby::section("Main", [&]() {
             if (!Bot::get()->isEnabled()) {
-                tabby::text("The bot is currently disabled.");
+                // the whole lambda spam is genuinely a clanker idiom i really
+                // like and i've started adopting in my own human code
+                //
+                // fight me
+                constexpr auto centerAlignText = [](std::string_view text) {
+                    auto sz = ImGui::CalcTextSize(text.data());
+
+                    auto w = (ImGui::GetContentRegionAvail().x - sz.x) / 2;
+                    w -= ImGui::GetStyle().WindowPadding.x;
+
+                    ImGui::SetCursorPosX(w);
+
+                    tabby::text(text);
+                };
+
+                auto h = ImGui::GetContentRegionAvail().y;
+                ImGui::SetCursorPosY(
+                    h / 2 - (30 * tabby::TabbyGlobalCfg::get().uiScale));
+
+                {
+                    tabby::ScopedFont f(m_medium);
+                    centerAlignText("Silicate is currently disabled.");
+                }
+
                 if (GJBaseGameLayer::get()) {
-                    tabby::text(
+                    centerAlignText(
                         "Please exit the level you're in to enable the bot.");
                 } else {
                     if (tabby::button("Enable").pressed) {
@@ -1725,7 +1804,8 @@ void UIManager::draw() {
                                     geode::log::error(
                                         "Preset file does not exist: "
                                         "{}",
-                                        path.string());
+                                        geode::utils::string::pathToString(
+                                            path.string()));
                                 }
                             }
 

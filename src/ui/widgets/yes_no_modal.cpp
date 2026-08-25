@@ -11,7 +11,7 @@
 
 namespace {
 
-constexpr const char* kPopupId = "Silicate Confirmation##YesNoModal";
+constexpr const char* POPUP_ID = "Silicate Confirmation##YesNoModal";
 
 struct ModalState {
     slui::YesNoModalConfig config;
@@ -71,7 +71,7 @@ void drawYesNoModal(const std::function<void()>& renderBackground) {
     if (!s_modal.open) return;
 
     if (s_modal.requestOpen) {
-        ImGui::OpenPopup(kPopupId);
+        ImGui::OpenPopup(POPUP_ID);
         s_modal.requestOpen = false;
     }
 

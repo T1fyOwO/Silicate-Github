@@ -32,11 +32,15 @@ class ImGuiHookCtx {
     tabby::Context m_ctx;
     HWND m_hWnd = nullptr;
     void* m_glfwWindow = nullptr;
-    GLuint m_inputTex;
+    GLuint m_inputTex = 0;
+    GLuint m_sceneTex = 0;
     GLint m_oldFbo;
     GLint m_oldProgram;
     GLint m_oldTex;
+    GLint m_oldTex1;
+    GLint m_oldActiveTexture;
     RenderPass m_blurPass;
+    GLuint m_glassProgram = 0;
 
     float m_width;
     float m_height;
@@ -44,6 +48,7 @@ class ImGuiHookCtx {
 
     WNDPROC m_oWndProc = nullptr;
     ImVec4 m_windowPos;
+    float m_cornerRadius = 0.0f;
 
     static ImGuiHookCtx& get() {
         static ImGuiHookCtx ctx;
@@ -59,11 +64,13 @@ class ImGuiHookCtx {
     void init(cocos2d::CCEGLView* view);
     void reinitForNewWindow(cocos2d::CCEGLView* view, HDC hdc, HWND hWnd);
 
-    void preSampleBlur(ImVec4 windowPos);
+    void preSampleBlur(ImVec4 windowPos, float cornerRadius);
     void sampleBlurFirstPass();
     void sampleBlurSecondPass();
-
-    void sampleBlurPostprocess();
+    void sampleBlurSnapshot();
+    void sampleBlurPostprocessToInput();
+    void sampleGlassToInput();
+    void sampleGlassToBlur();
 
     void postSampleBlur();
 
