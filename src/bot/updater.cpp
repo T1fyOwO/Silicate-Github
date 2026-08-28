@@ -735,6 +735,9 @@ static void restorePhysDtHook(SafetyHookContext& ctx) {
     ctx.xmm9.f64[0] = newDt;
 }
 
+static int s_backstepJobSteps = 0;
+static BotScheduler::JobId s_backstepJob{};
+
 $execute {
     util::midhook(geode::base::get() + 0x237A7C, "physDt", physDtMidhook);
     util::midhook(geode::base::get() + 0x237DCE, "physStepCount",
@@ -746,34 +749,79 @@ $execute {
     util::midhook(geode::base::get() + 0x238BAA, "frameUpdate",
                   frameUpdateMidhook);
 
-    Bot::get()->updater().m_speedhack->handle(
+    auto bot = Bot::get();
+    bot->updater().m_speedhack->handle(
         [](double) { Bot::get()->updater().updateAudioSpeedhack(); });
 
-    Bot::get()->updater().m_paused->handle([](bool& paused) {
+    bot->updater().m_paused->handle([bot](bool& paused) {
         auto pl = PlayLayer::get();
+
+        if (bot->scheduler().isScheduled(s_backstepJob)) {
+            paused = true;
+            return;
+        }
+
         if (!pl || pl->m_isPaused || Renderer::get()->isRecording()) {
             paused = false;
         }
     });
 
-    Bot::get()->updater().m_stepOnce->handle([](bool&) {
+    bot->updater().m_stepOnce->handle([](bool&) {
         auto& paused = Bot::get()->updater().m_paused;
 
         paused->inner() = true;
         paused->notifyChange();
     });
 
-    Bot::get()->updater().m_stepBackwards->handle([](bool& paused) {
+    bot->updater().m_stepBackwards->handle([bot](bool& paused) {
+        bool p = paused;
+
+        auto& fa = Bot::get()->updater().m_paused;
+
+        fa->inner() = true;
+        fa->notifyChange();
+        if (!fa->inner()) return;
+
+        s_backstepJobSteps++;
+        if (bot->scheduler().isScheduled(s_backstepJob)) {
+            bot->scheduler().resetTime(s_backstepJob);
+        } else {
+            s_backstepJobSteps = 1;
+            s_backstepJob = bot->scheduler().schedule([p]() {
+                if (PlayLayer::get() && p && Bot::get()->practiceFix().canRestoreState() &&
+                    !Renderer::get()->isRecording()) {
+                    Bot::get()->updater().backwardsStep(s_backstepJobSteps);
+                    PlayLayer::get()->m_player1->setOpacity(255);
+                    PlayLayer::get()->m_player2->setOpacity(255);
+                }
+            }, SLSettings::get()->keybindHoldDelayMs / 1000.0f * 1.5f);
+        }
+
         auto pl = PlayLayer::get();
-        if (pl && paused && Bot::get()->practiceFix().canRestoreState() &&
-            !Renderer::get()->isRecording()) {
-            Bot::get()->updater().backwardsStep();
+
+        if (bot->practiceFix().m_storedFrames.empty()) {
+            return;
+        }
+
+        if (pl) {
+            s_backstepJobSteps = std::min(s_backstepJobSteps, (int)bot->practiceFix().m_storedFrames.size() - 1);
+            size_t index =
+                bot->practiceFix().m_storedFrames.size() - s_backstepJobSteps - 1;
+            auto& c = bot->practiceFix().m_storedFrames.at(
+                index
+            );
+            pl->m_player1->setPosition(c.m_player1.m_position);
+            pl->m_player1->setRotation(c.m_player1.m_ccRotation);
+            pl->m_player1->setOpacity(127);
+            pl->m_player2->setPosition(c.m_player2.m_position);
+            pl->m_player2->setRotation(c.m_player1.m_ccRotation);
+            pl->m_player2->setOpacity(127);
         }
 
         paused = false;
     });
 
-    Bot::get()->updater().m_noMirror->handle([](bool& noMirror) {
+    bot->updater().m_noMirror->handle([](bool& noMirror) {
         auto pl = PlayLayer::get();
         if (!pl) return;
         if (noMirror) {

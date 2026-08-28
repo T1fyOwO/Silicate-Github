@@ -28,6 +28,8 @@ class BotScheduler {
                    bool repeat = false);
     void unschedule(JobId id);
     void reschedule(JobId id, double interval);
+    bool isScheduled(JobId id) const { return m_jobs.contains(id); }
+    void resetTime(JobId id);
 
     void update(float dt);
 };

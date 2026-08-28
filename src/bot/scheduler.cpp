@@ -41,6 +41,14 @@ void BotScheduler::reschedule(const JobId id, const double interval) {
     m_jobs[id].m_interval = interval;
 }
 
+void BotScheduler::resetTime(JobId id) {
+    if (!m_jobs.contains(id)) {
+        return;
+    }
+
+    m_jobs[id].m_lastExecuted = 0.0;
+}
+
 void BotScheduler::update(const float dt) {
     for (auto it = m_jobs.begin(); it != m_jobs.end();) {
         it->second.update(dt);
