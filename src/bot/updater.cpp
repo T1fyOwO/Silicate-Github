@@ -738,6 +738,40 @@ static void restorePhysDtHook(SafetyHookContext& ctx) {
 static int s_backstepJobSteps = 0;
 static BotScheduler::JobId s_backstepJob{};
 
+struct BackstepPlayerData {
+    CCPoint m_position{};
+    float m_rotation{};
+
+    BackstepPlayerData() {}
+    BackstepPlayerData(PlayerObject* p) : m_position(p->m_position), m_rotation(p->getRotation()) {}
+
+    void operator()(PlayerObject* p) {
+        p->setPosition(m_position);
+        p->m_position = m_position;
+        p->setRotation(m_rotation);
+        p->setOpacity(255);
+    }
+};
+
+static BackstepPlayerData s_backstepP1{};
+static BackstepPlayerData s_backstepP2{};
+
+static void updateBackstepPlayers(PlayLayer* pl) {
+    auto* bot = Bot::get();
+    s_backstepJobSteps = std::min(s_backstepJobSteps, (int)bot->practiceFix().m_storedFrames.size() - 1);
+    size_t index =
+        bot->practiceFix().m_storedFrames.size() - s_backstepJobSteps - 1;
+    auto& c = bot->practiceFix().m_storedFrames.at(
+        index
+    );
+    pl->m_player1->setPosition(c.m_player1.m_position);
+    pl->m_player1->setRotation(c.m_player1.m_ccRotation);
+    pl->m_player1->setOpacity(127);
+    pl->m_player2->setPosition(c.m_player2.m_position);
+    pl->m_player2->setRotation(c.m_player1.m_ccRotation);
+    pl->m_player2->setOpacity(127);
+}
+
 $execute {
     util::midhook(geode::base::get() + 0x237A7C, "physDt", physDtMidhook);
     util::midhook(geode::base::get() + 0x237DCE, "physStepCount",
@@ -757,8 +791,7 @@ $execute {
         auto pl = PlayLayer::get();
 
         if (bot->scheduler().isScheduled(s_backstepJob)) {
-            paused = true;
-            return;
+            bot->scheduler().force(s_backstepJob);
         }
 
         if (!pl || pl->m_isPaused || Renderer::get()->isRecording()) {
@@ -766,20 +799,42 @@ $execute {
         }
     });
 
-    bot->updater().m_stepOnce->handle([](bool&) {
+    bot->updater().m_stepOnce->handle([bot](bool& step) {
         auto& paused = Bot::get()->updater().m_paused;
 
-        paused->inner() = true;
-        paused->notifyChange();
+        auto* pl = PlayLayer::get();
+        if (bot->scheduler().isScheduled(s_backstepJob) && pl) {
+            bot->scheduler().resetTime(s_backstepJob);
+            s_backstepJobSteps = std::max(0, s_backstepJobSteps - 1);
+
+            if (s_backstepJobSteps > 0) {
+                updateBackstepPlayers(pl);
+            } else if (s_backstepJobSteps == 0) {
+                bot->scheduler().unschedule(s_backstepJob);
+                s_backstepP1(pl->m_player1);
+                s_backstepP2(pl->m_player2);
+            }
+
+            step = false;
+        }
+
+        if (!paused->inner()) {
+            paused->inner() = true;
+            paused->notifyChange();
+        }
     });
 
     bot->updater().m_stepBackwards->handle([bot](bool& paused) {
+        if (!PlayLayer::get()) return;
         bool p = paused;
 
         auto& fa = Bot::get()->updater().m_paused;
 
-        fa->inner() = true;
-        fa->notifyChange();
+        if (!fa->inner()) {
+            fa->inner() = true;
+            fa->notifyChange();
+        }
+
         if (!fa->inner()) return;
 
         s_backstepJobSteps++;
@@ -787,7 +842,10 @@ $execute {
             bot->scheduler().resetTime(s_backstepJob);
         } else {
             s_backstepJobSteps = 1;
+            s_backstepP1 = BackstepPlayerData(PlayLayer::get()->m_player1);
+            s_backstepP2 = BackstepPlayerData(PlayLayer::get()->m_player2);
             s_backstepJob = bot->scheduler().schedule([p]() {
+                if (s_backstepJobSteps == 0) return;
                 if (PlayLayer::get() && p && Bot::get()->practiceFix().canRestoreState() &&
                     !Renderer::get()->isRecording()) {
                     Bot::get()->updater().backwardsStep(s_backstepJobSteps);
@@ -804,18 +862,7 @@ $execute {
         }
 
         if (pl) {
-            s_backstepJobSteps = std::min(s_backstepJobSteps, (int)bot->practiceFix().m_storedFrames.size() - 1);
-            size_t index =
-                bot->practiceFix().m_storedFrames.size() - s_backstepJobSteps - 1;
-            auto& c = bot->practiceFix().m_storedFrames.at(
-                index
-            );
-            pl->m_player1->setPosition(c.m_player1.m_position);
-            pl->m_player1->setRotation(c.m_player1.m_ccRotation);
-            pl->m_player1->setOpacity(127);
-            pl->m_player2->setPosition(c.m_player2.m_position);
-            pl->m_player2->setRotation(c.m_player1.m_ccRotation);
-            pl->m_player2->setOpacity(127);
+            updateBackstepPlayers(pl);
         }
 
         paused = false;

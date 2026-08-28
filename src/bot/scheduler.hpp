@@ -30,6 +30,7 @@ class BotScheduler {
     void reschedule(JobId id, double interval);
     bool isScheduled(JobId id) const { return m_jobs.contains(id); }
     void resetTime(JobId id);
+    void force(JobId id);
 
     void update(float dt);
 };

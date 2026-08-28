@@ -10,6 +10,14 @@ void ScheduledJob::update(const float dt) {
     m_stale = !m_repeat;
 }
 
+void BotScheduler::force(JobId id) {
+    if (!m_jobs.contains(id)) return;
+
+    auto& job = m_jobs.at(id);
+    job.m_lastExecuted = job.m_interval + 1.0;
+    this->update(0.0);
+}
+
 BotScheduler::JobId BotScheduler::schedule(const JobExecutor& executor,
                                            const double interval,
                                            const bool repeat) {
@@ -38,7 +46,7 @@ void BotScheduler::reschedule(const JobId id, const double interval) {
         return;
     }
 
-    m_jobs[id].m_interval = interval;
+    m_jobs.at(id).m_interval = interval;
 }
 
 void BotScheduler::resetTime(JobId id) {
@@ -46,7 +54,7 @@ void BotScheduler::resetTime(JobId id) {
         return;
     }
 
-    m_jobs[id].m_lastExecuted = 0.0;
+    m_jobs.at(id).m_lastExecuted = 0.0;
 }
 
 void BotScheduler::update(const float dt) {
