@@ -5,6 +5,7 @@
 
 #include <Geode/Enums.hpp>
 #include <Geode/Geode.hpp>
+#include <Geode/binding/FMODAudioEngine.hpp>
 #include <algorithm>
 #include <cctype>
 #include <deque>
@@ -961,8 +962,22 @@ void UIManager::draw() {
             "Navigation",
             [&]() {
                 double width = tabby::TabbyGlobalCfg::get().widgetWidth;
+                auto pre = ImGui::GetCursorScreenPos();
                 ImGui::Image(static_cast<ImTextureID>(m_theme->m_texture),
                              ImVec2(width, width * 0.3572923f));
+
+                auto post = ImGui::GetCursorScreenPos();
+
+                auto mp = ImGui::GetMousePos();
+
+                bool mouseIsWithinBounds = pre.y < mp.y && post.y >= mp.y &&
+                                           pre.x < mp.x &&
+                                           (pre.x + width * 0.35f) > mp.x;
+
+                if (ImGui::IsItemClicked() && mouseIsWithinBounds) {
+                    FMODAudioEngine::get()->playEffect("boop.mp3"_spr, 1.0, 0.0,
+                                                       1.f);
+                }
 
                 tabby::divider(false);
 
@@ -1123,7 +1138,8 @@ void UIManager::draw() {
                             }
                         };
 
-                        if (std::filesystem::exists(path)) {
+                        if (SLSettings::get()->confirmSaveOverwrite &&
+                            std::filesystem::exists(path)) {
                             slui::showYesNoModal({
                                 .title = "Overwrite?",
                                 .message = fmt::format(
@@ -1573,7 +1589,7 @@ void UIManager::draw() {
                         Bot::get()->updater().m_tps->notifyChange();
                         input.recalculateDelta(i == 0 ? 0
                                                       : inputs[i - 1].m_frame);
-                        if ((int)inputs.size() > i) {
+                        if ((int)inputs.size() > i + 1) {
                             inputs[i + 1].recalculateDelta(inputs[i].m_frame);
                         }
                     }
@@ -2142,6 +2158,7 @@ void UIManager::draw() {
                                     edit.behaviorDropdown, behavior,
                                     popupShaderFn)
                                     .changed) {
+                                b->cancelHeldKeybind(kb.get());
                                 kb->setType(static_cast<KeybindType>(behavior));
                             }
                             slui::tooltip(
@@ -2336,6 +2353,48 @@ void UIManager::draw() {
                         .changed) {
                     m_state.m_opacity->notifyChange();
                 }
+
+                if (tabby::checkbox("Ask For Overwrite Confirmation",
+                                    SLSettings::get()->confirmSaveOverwrite)
+                        .pressed) {
+                    if (!SLSettings::get()->confirmSaveOverwrite) {
+                        slui::showYesNoModal({
+                            .title = "Disable Overwrite Confirmation?",
+                            .message =
+                                "Are you sure you'd like to disable overwrite "
+                                "confirmation? Silicate will no longer ask "
+                                "you to confirm saving replays when "
+                                "overwriting them. Only enable this if you "
+                                "know what you're doing - you may lose your "
+                                "replay this way!",
+                            .onNo =
+                                []() {
+                                    SLSettings::get()->confirmSaveOverwrite =
+                                        true;
+                                },
+                        });
+                    }
+                }
+
+                tabby::divider();
+
+                tabby::text("Keybinds", m_medium);
+
+                auto settings = SLSettings::get();
+                tabby::drag("Repeat Frequency##Keybinds",
+                            settings->keybindRepeatFrequency, 1.0, 1000.0, 1.0f,
+                            "{:.0f} RPS");
+                slui::tooltip(
+                    "How often held Toggle and Override keybinds activate "
+                    "after the hold delay.");
+
+                tabby::drag("Hold Trigger Delay##Keybinds",
+                            settings->keybindHoldDelayMs, 0.0, 5000.0, 10.0f,
+                            "{:.0f}ms");
+                slui::tooltip(
+                    "How long a Toggle or Override key must be held before it "
+                    "starts repeating. A normal press still activates once "
+                    "immediately.");
 
                 tabby::divider();
 

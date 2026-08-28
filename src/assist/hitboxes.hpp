@@ -23,6 +23,17 @@ struct HitboxTrailUnit {
 };
 
 class Hitboxes {
+    class HitboxesContainer : public cocos2d::CCNode {
+        Hitboxes* m_owner = nullptr;
+        GJBaseGameLayer* m_gameLayer = nullptr;
+
+       public:
+        static HitboxesContainer* create(Hitboxes* owner,
+                                         GJBaseGameLayer* gameLayer);
+        bool initContainer(Hitboxes* owner, GJBaseGameLayer* gameLayer);
+        void visit() override;
+    };
+
     class HitboxesDrawNode : public cocos2d::CCDrawNode {
        public:
         static HitboxesDrawNode* create() {
@@ -39,7 +50,7 @@ class Hitboxes {
         }
     };
 
-    cocos2d::CCNode* m_container = nullptr;
+    HitboxesContainer* m_container = nullptr;
 
     HitboxesDrawNode* m_drawNode = nullptr;
 

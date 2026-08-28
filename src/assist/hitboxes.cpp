@@ -121,18 +121,39 @@ void HitboxTrailUnit::drawCircle(cocos2d::CCDrawNode* node, float width,
 }
 
 static void syncToObjectLayer(cocos2d::CCNode* node, cocos2d::CCNode* layer) {
-    if (!node || !layer) return;
+    if (!node || !layer || !node->getParent()) return;
 
-    node->setPosition(layer->getPosition());
-    node->setScaleX(layer->getScaleX());
-    node->setScaleY(layer->getScaleY());
-    node->setRotationX(layer->getRotationX());
-    node->setRotationY(layer->getRotationY());
-    node->setSkewX(layer->getSkewX());
-    node->setSkewY(layer->getSkewY());
-    node->setContentSize(layer->getContentSize());
-    node->setAnchorPoint(layer->getAnchorPoint());
-    node->ignoreAnchorPointForPosition(layer->isIgnoreAnchorPointForPosition());
+    const auto layerToWorld = layer->nodeToWorldTransform();
+    const auto worldToParent = node->getParent()->worldToNodeTransform();
+    node->setAdditionalTransform(
+        cocos2d::CCAffineTransformConcat(layerToWorld, worldToParent));
+}
+
+static cocos2d::CCRect objectSpaceViewport(cocos2d::CCNode* layer) {
+    auto director = cocos2d::CCDirector::get();
+    const auto size = director->getWinSize();
+    const auto worldToObject = layer->worldToNodeTransform();
+
+    const std::array<cocos2d::CCPoint, 4> corners = {
+        cocos2d::CCPointApplyAffineTransform({0.f, 0.f}, worldToObject),
+        cocos2d::CCPointApplyAffineTransform({size.width, 0.f}, worldToObject),
+        cocos2d::CCPointApplyAffineTransform({0.f, size.height}, worldToObject),
+        cocos2d::CCPointApplyAffineTransform({size.width, size.height},
+                                             worldToObject),
+    };
+
+    float minX = corners[0].x;
+    float maxX = corners[0].x;
+    float minY = corners[0].y;
+    float maxY = corners[0].y;
+    for (auto const& corner : corners) {
+        minX = std::min(minX, corner.x);
+        maxX = std::max(maxX, corner.x);
+        minY = std::min(minY, corner.y);
+        maxY = std::max(maxY, corner.y);
+    }
+
+    return {{minX, minY}, {maxX - minX, maxY - minY}};
 }
 
 static int containerZOrder(GJBaseGameLayer* pl) {
@@ -144,6 +165,32 @@ static int containerZOrder(GJBaseGameLayer* pl) {
     return (pl->m_uiLayer ? pl->m_uiLayer->getZOrder() : 101) + 1;
 }
 
+Hitboxes::HitboxesContainer* Hitboxes::HitboxesContainer::create(
+    Hitboxes* owner, GJBaseGameLayer* gameLayer) {
+    auto node = new HitboxesContainer();
+    if (node && node->initContainer(owner, gameLayer)) {
+        node->autorelease();
+        return node;
+    }
+
+    CC_SAFE_DELETE(node);
+    return nullptr;
+}
+
+bool Hitboxes::HitboxesContainer::initContainer(Hitboxes* owner,
+                                                GJBaseGameLayer* gameLayer) {
+    if (!CCNode::init() || !owner || !gameLayer) return false;
+
+    m_owner = owner;
+    m_gameLayer = gameLayer;
+    return true;
+}
+
+void Hitboxes::HitboxesContainer::visit() {
+    m_owner->draw(m_gameLayer);
+    CCNode::visit();
+}
+
 void Hitboxes::init(GJBaseGameLayer* pl) {
     if (m_initialized) {
         this->destroy();  // probably worth it to just recreate
@@ -151,10 +198,11 @@ void Hitboxes::init(GJBaseGameLayer* pl) {
 
     if (!pl || !pl->m_objectLayer) return;
 
-    m_container = cocos2d::CCNode::create();
+    m_container = HitboxesContainer::create(this, pl);
+    if (!m_container) return;
+
     m_container->retain();
     m_container->setID("hitbox-layer"_spr);
-    syncToObjectLayer(m_container, pl->m_objectLayer);
 
     auto addDrawNode = [this](std::string const& id,
                               int zOrder) -> HitboxesDrawNode* {
@@ -186,6 +234,7 @@ void Hitboxes::init(GJBaseGameLayer* pl) {
     }
 
     pl->addChild(m_container, containerZOrder(pl));
+    syncToObjectLayer(m_container, pl->m_objectLayer);
 
     m_initialized = true;
     this->raiseGameUI(pl);
@@ -470,16 +519,11 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
     syncToObjectLayer(m_container, pl->m_objectLayer);
 
     if (m_trailEnabled->inner()) {
-        float scaleX = pl->m_objectLayer->getScaleX();
-        float scaleY = pl->m_objectLayer->getScaleY();
-        float minX =
-            -pl->m_objectLayer->getPositionX() / scaleX - pl->m_cameraWidth;
-        float maxX =
-            -pl->m_objectLayer->getPositionX() / scaleX + pl->m_cameraWidth;
-        float minY =
-            -pl->m_objectLayer->getPositionY() / scaleY - pl->m_cameraHeight;
-        float maxY =
-            -pl->m_objectLayer->getPositionY() / scaleY + pl->m_cameraHeight;
+        const auto viewport = objectSpaceViewport(pl->m_objectLayer);
+        const float minX = viewport.getMinX();
+        const float maxX = viewport.getMaxX();
+        const float minY = viewport.getMinY();
+        const float maxY = viewport.getMaxY();
 
         // auto rect = cocos2d::CCRect(
         //     minX, minY,
@@ -513,8 +557,12 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
             settings.categories[Type::PlayerInner].colors.data();
         float innerFill = settings.categories[Type::PlayerInner].fillOpacity;
 
-        const float objX = pl->m_objectLayer->getPositionX();
-        const float objY = pl->m_objectLayer->getPositionY();
+        const auto objectToWorld = pl->m_objectLayer->nodeToWorldTransform();
+        auto director = cocos2d::CCDirector::get();
+        const float pointToPixelRatio = std::max(
+            director->getWinSizeInPixels().width / director->getWinSize().width,
+            director->getWinSizeInPixels().height /
+                director->getWinSize().height);
 
         auto drawTrail = [&](std::deque<HitboxTrailUnit>& trail) {
             bool hasLast = false;
@@ -523,20 +571,19 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
             for (auto& unit : trail) {
                 if (!unit.shouldDraw(minX, maxX, minY, maxY)) continue;
 
-                auto d = cocos2d::CCDirector::get();
-                const float pointToPixelRatio = std::max(
-                    d->getWinSizeInPixels().width / d->getWinSize().width,
-                    d->getWinSizeInPixels().height / d->getWinSize().height);
-
                 // Collapse consecutive segments that map to the same on-screen
                 // pixel; keeps the trail as dense as the current zoom allows
                 // without overdrawing identical positions.
+                const auto screenPosition =
+                    cocos2d::CCPointApplyAffineTransform(
+                        {unit.m_rect.getMidX(), unit.m_rect.getMidY()},
+                        objectToWorld);
                 const int px = static_cast<int>(std::floor(
-                    (unit.m_rect.getMidX() * scaleX + objX) *
-                    m_optimizationFactor->inner() * pointToPixelRatio));
+                    screenPosition.x * m_optimizationFactor->inner() *
+                    pointToPixelRatio));
                 const int py = static_cast<int>(std::floor(
-                    (unit.m_rect.getMidY() * scaleY + objY) *
-                    m_optimizationFactor->inner() * pointToPixelRatio));
+                    screenPosition.y * m_optimizationFactor->inner() *
+                    pointToPixelRatio));
                 if (hasLast && px == lastPx && py == lastPy) continue;
                 hasLast = true;
                 lastPx = px;

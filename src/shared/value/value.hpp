@@ -1,6 +1,7 @@
 #pragma once
 #include <Geode/Geode.hpp>
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <glaze/json/read.hpp>
 #include <memory>
@@ -8,6 +9,7 @@
 #include <ranges>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "keybind.hpp"
@@ -34,12 +36,54 @@ class SLBindingManager {
     using KeybindVector = std::vector<std::shared_ptr<KeybindControl>>;
     std::unordered_map<KeybindControl::HashT, KeybindVector> m_keybinds;
 
+    struct HeldKeybind {
+        std::weak_ptr<KeybindControl> keybind;
+        double elapsed = 0.0;
+        double repeatElapsed = 0.0;
+        double repeatFrequency = 0.0;
+        bool repeating = false;
+    };
+    std::unordered_map<int, std::vector<HeldKeybind>> m_heldKeybinds;
+
     SLBindingManager() = default;
 
     bool m_needsNewKey = false;
     KeybindControl* m_currentlyEdited = nullptr;
 
     bool m_hasRead = false;
+
+    bool applyKeybind(const std::shared_ptr<KeybindControl>& keybind,
+                      bool pressed) {
+        auto value = m_values.find(keybind->getTag());
+        if (value == m_values.end()) return false;
+        if (keybind->getTypeKey() != value->second->getTypeKey()) {
+            if (pressed) {
+                geode::log::error(
+                    "Keybind for {} disagrees with the value's type, "
+                    "ignoring it",
+                    keybind->getTag());
+            }
+            return false;
+        }
+
+        keybind->applyValue(pressed, value->second->getValue(),
+                            value->second->getPrevious());
+        value->second->notifyChange();
+        return true;
+    }
+
+    void releaseHeldKey(int key) {
+        auto held = m_heldKeybinds.find(key);
+        if (held == m_heldKeybinds.end()) return;
+
+        auto bindings = std::move(held->second);
+        m_heldKeybinds.erase(held);
+        for (const auto& item : bindings) {
+            if (auto keybind = item.keybind.lock()) {
+                this->applyKeybind(keybind, false);
+            }
+        }
+    }
 
     void loadDefaults() {
         struct DefaultBind {
@@ -233,6 +277,8 @@ class SLBindingManager {
                                        [kb](auto& k) { return k.get() == kb; });
         if (it == bucket->second.end()) return nullptr;
 
+        this->cancelHeldKeybind(kb);
+
         // key and modifiers are unchanged, so the bucket is still the right one
         if (m_currentlyEdited == kb) m_currentlyEdited = replacement.get();
         *it = replacement;
@@ -262,6 +308,7 @@ class SLBindingManager {
         if (bucket == m_keybinds.end()) return false;
 
         if (m_currentlyEdited == kb) this->stopEdit();
+        this->cancelHeldKeybind(kb);
         const auto oldSize = bucket->second.size();
         std::erase_if(bucket->second,
                       [kb](const auto& item) { return item.get() == kb; });
@@ -272,33 +319,106 @@ class SLBindingManager {
 
     void processKeyEvent(int key, bool pressed, bool ctrl, bool shift,
                          bool alt) {
+        if (!pressed) {
+            this->releaseHeldKey(key);
+            return;
+        }
+
+        if (m_heldKeybinds.contains(key)) return;
+
         KeybindControl::HashT hash =
             keybind::makeHash(key, keybind::packModifiers(ctrl, shift, alt));
 
         auto bucket = m_keybinds.find(hash);
         if (bucket == m_keybinds.end()) return;
 
+        std::vector<HeldKeybind> held;
+        held.reserve(bucket->second.size());
         for (const auto& kb : bucket->second) {
-            auto value = m_values.find(kb->getTag());
-            if (value == m_values.end()) continue;
+            if (!kb->isActive()) continue;
+            if (this->applyKeybind(kb, true)) held.push_back({kb});
+        }
 
-            // applyValue reinterprets the value's storage as the keybind's T,
-            // so a disagreement here would corrupt it. Shouldn't happen now
-            // that keybinds are always built from their tag's value, but a
-            // hand-edited keybinds.json shouldn't be able to smash memory.
-            if (kb->getTypeKey() != value->second->getTypeKey()) {
-                if (pressed) {
-                    geode::log::error(
-                        "Keybind for {} disagrees with the value's type, "
-                        "ignoring it",
-                        kb->getTag());
+        if (!held.empty()) m_heldKeybinds.emplace(key, std::move(held));
+    }
+
+    bool isKeyHeld(int key) const { return m_heldKeybinds.contains(key); }
+
+    void updateHeldKeybinds(double dt, double repeatFrequency,
+                            double holdDelayMs) {
+        if (!std::isfinite(dt) || dt <= 0.0) return;
+
+        if (!std::isfinite(repeatFrequency)) repeatFrequency = 30.0;
+        repeatFrequency = std::clamp(repeatFrequency, 1.0, 1000.0);
+        if (!std::isfinite(holdDelayMs)) holdDelayMs = 500.0;
+        const double holdDelay = std::max(0.0, holdDelayMs) / 1000.0;
+        const double interval = 1.0 / repeatFrequency;
+
+        for (auto& items : m_heldKeybinds | std::views::values) {
+            for (auto& item : items) {
+                auto kb = item.keybind.lock();
+                if (!kb || !kb->isActive() ||
+                    kb->getType() == KeybindType::Hold) {
+                    continue;
                 }
-                continue;
-            }
 
-            kb->applyValue(pressed, value->second->getValue(),
-                           value->second->getPrevious());
-            value->second->notifyChange();
+                item.elapsed += dt;
+                uint64_t repeatCount = 0;
+                if (!item.repeating) {
+                    if (item.elapsed < holdDelay) continue;
+
+                    item.repeating = true;
+                    item.repeatElapsed = item.elapsed - holdDelay;
+                    item.repeatFrequency = repeatFrequency;
+                    repeatCount = 1;
+                } else {
+                    if (item.repeatFrequency != repeatFrequency) {
+                        item.repeatElapsed = 0.0;
+                        item.repeatFrequency = repeatFrequency;
+                    }
+                    item.repeatElapsed += dt;
+                }
+
+                const auto intervalCount =
+                    static_cast<uint64_t>(item.repeatElapsed / interval);
+                item.repeatElapsed -=
+                    static_cast<double>(intervalCount) * interval;
+                repeatCount += intervalCount;
+
+                for (uint64_t repeat = 0; repeat < repeatCount; ++repeat) {
+                    this->applyKeybind(kb, true);
+                }
+            }
+        }
+    }
+
+    void cancelHeldKeybind(KeybindControl* target) {
+        for (auto held = m_heldKeybinds.begin();
+             held != m_heldKeybinds.end();) {
+            std::erase_if(held->second, [this, target](const auto& item) {
+                auto kb = item.keybind.lock();
+                if (!kb || kb.get() != target) return !kb;
+                this->applyKeybind(kb, false);
+                return true;
+            });
+
+            if (held->second.empty()) {
+                held = m_heldKeybinds.erase(held);
+            } else {
+                ++held;
+            }
+        }
+    }
+
+    void releaseAllHeldKeybinds() {
+        auto held = std::move(m_heldKeybinds);
+        m_heldKeybinds.clear();
+        for (const auto& items : held | std::views::values) {
+            for (const auto& item : items) {
+                if (auto kb = item.keybind.lock()) {
+                    this->applyKeybind(kb, false);
+                }
+            }
         }
     }
 };

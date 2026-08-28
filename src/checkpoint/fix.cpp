@@ -127,6 +127,12 @@ void PracticeFix::saveState(CheckpointObject* obj, uint64_t attemptStartFrame) {
 
     uint64_t frame = Bot::get()->updater().getFrame();
     if (!m_storedFrames.empty() && m_storedFrames.back().m_frame == frame) {
+        CC_SAFE_RELEASE(obj);
+        return;
+    }
+
+    if (m_maxStoredFrames->inner() == 0) {
+        CC_SAFE_RELEASE(obj);
         return;
     }
 
@@ -223,7 +229,7 @@ void PracticeFix::clearPlatformer(bool assumeLoaded) {
             m_platformerCheckpoints.back().second->resetCheckpoint();
 
             // release
-            // m_platformerCheckpoints.top().first->release();
+            m_platformerCheckpoints.back().first->release();
         }
 
         m_platformerCheckpoints.pop_back();

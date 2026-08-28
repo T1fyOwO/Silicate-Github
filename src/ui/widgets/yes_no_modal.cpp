@@ -104,7 +104,7 @@ void drawYesNoModal(const std::function<void()>& renderBackground) {
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar;
     if (renderBackground) flags |= ImGuiWindowFlags_NoBackground;
 
-    if (ImGui::BeginPopupModal(kPopupId, nullptr, flags)) {
+    if (ImGui::BeginPopupModal(POPUP_ID, nullptr, flags)) {
         if (renderBackground) renderBackground();
 
         {

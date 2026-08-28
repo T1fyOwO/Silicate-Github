@@ -23,13 +23,26 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     bool shiftHeld = GetKeyState(VK_SHIFT) & 0x8000;
     bool ctrlHeld = GetKeyState(VK_CONTROL) & 0x8000;
     bool altHeld = GetKeyState(VK_MENU) & 0x8000;
+    auto* bindings = SLBindingManager::get();
 
     if (uMsg == WM_SIZE && wParam != SIZE_MINIMIZED) {
         ImGuiHookCtx::get().handleResize(LOWORD(lParam), HIWORD(lParam));
     }
 
-    if (uMsg == WM_KILLFOCUS && !slui::isYesNoModalOpen()) {
-        Bot::get()->ui().m_state.m_visible->inner() = false;
+    if (uMsg == WM_KILLFOCUS) {
+        bindings->releaseAllHeldKeybinds();
+        if (!slui::isYesNoModalOpen()) {
+            Bot::get()->ui().m_state.m_visible->inner() = false;
+        }
+    }
+
+    const bool isRelease =
+        uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP || uMsg == WM_MBUTTONUP;
+    const int releasedKey =
+        uMsg == WM_MBUTTONUP ? VK_MBUTTON : static_cast<int>(wParam);
+    if (isRelease && bindings->isKeyHeld(releasedKey)) {
+        bindings->processKeyEvent(releasedKey, false, ctrlHeld, shiftHeld,
+                                  altHeld);
     }
 
     if ((uMsg == WM_KEYDOWN || uMsg == WM_KEYUP || uMsg == WM_CHAR) &&
@@ -45,10 +58,8 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         const bool keyboardMessage =
             uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN || uMsg == WM_KEYUP ||
             uMsg == WM_SYSKEYUP || uMsg == WM_CHAR;
-        const bool mouseMessage =
-            uMsg >= WM_MOUSEFIRST && uMsg <= WM_MOUSELAST;
-        if (slui::isYesNoModalOpen() &&
-            (keyboardMessage || mouseMessage)) {
+        const bool mouseMessage = uMsg >= WM_MOUSEFIRST && uMsg <= WM_MOUSELAST;
+        if (slui::isYesNoModalOpen() && (keyboardMessage || mouseMessage)) {
             return true;
         }
 
@@ -58,11 +69,11 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                              wParam == VK_LWIN || wParam == VK_RWIN ||
                              wParam == VK_MENU || wParam == VK_LMENU ||
                              wParam == VK_RMENU;
-            auto* b = SLBindingManager::get();
+            auto* b = bindings;
 
-            bool isRelease = uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP;
+            bool isKeyboardRelease = uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP;
             if (b->wantsCapture()) {
-                if (isRelease) {
+                if (isKeyboardRelease) {
                     b->takeInput(static_cast<int>(wParam), shiftHeld, ctrlHeld,
                                  altHeld);
                 }
@@ -77,7 +88,7 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
         if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN ||
             uMsg == WM_MBUTTONDOWN || uMsg == WM_MOUSEWHEEL) {
-            int key = wParam;
+            int key = uMsg == WM_MBUTTONDOWN ? VK_MBUTTON : wParam;
 
             if (uMsg == WM_MOUSEWHEEL) {
                 if (GET_WHEEL_DELTA_WPARAM(wParam) > 0) {
@@ -87,13 +98,15 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 }
             }
 
-            SLBindingManager::get()->processKeyEvent(key, true, ctrlHeld,
-                                                     shiftHeld, altHeld);
+            bindings->processKeyEvent(key, true, ctrlHeld, shiftHeld, altHeld);
+            if (uMsg == WM_MOUSEWHEEL) {
+                bindings->processKeyEvent(key, false, ctrlHeld, shiftHeld,
+                                          altHeld);
+            }
         } else if (uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP ||
                    uMsg == WM_MBUTTONUP) {
-            int key = wParam;
-            SLBindingManager::get()->processKeyEvent(key, false, ctrlHeld,
-                                                     shiftHeld, altHeld);
+            int key = uMsg == WM_MBUTTONUP ? VK_MBUTTON : wParam;
+            bindings->processKeyEvent(key, false, ctrlHeld, shiftHeld, altHeld);
         }
 
         // return true;
@@ -106,7 +119,7 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     } else {
         if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN ||
             uMsg == WM_MBUTTONDOWN || uMsg == WM_MOUSEWHEEL) {
-            int key = wParam;
+            int key = uMsg == WM_MBUTTONDOWN ? VK_MBUTTON : wParam;
 
             if (uMsg == WM_MOUSEWHEEL) {
                 if (GET_WHEEL_DELTA_WPARAM(wParam) > 0) {
@@ -116,13 +129,15 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 }
             }
 
-            SLBindingManager::get()->processKeyEvent(key, true, ctrlHeld,
-                                                     shiftHeld, altHeld);
+            bindings->processKeyEvent(key, true, ctrlHeld, shiftHeld, altHeld);
+            if (uMsg == WM_MOUSEWHEEL) {
+                bindings->processKeyEvent(key, false, ctrlHeld, shiftHeld,
+                                          altHeld);
+            }
         } else if (uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP ||
                    uMsg == WM_MBUTTONUP) {
-            int key = wParam;
-            SLBindingManager::get()->processKeyEvent(key, false, ctrlHeld,
-                                                     shiftHeld, altHeld);
+            int key = uMsg == WM_MBUTTONUP ? VK_MBUTTON : wParam;
+            bindings->processKeyEvent(key, false, ctrlHeld, shiftHeld, altHeld);
         }
     }
 
@@ -604,11 +619,11 @@ static void configureGlassPass(ImGuiHookCtx& context, GLenum output) {
     glUseProgram(context.m_glassProgram);
     glUniform1i(0, 0);
     glUniform2f(1, 1.0f / context.m_blurPass.m_width,
-               1.0f / context.m_blurPass.m_height);
+                1.0f / context.m_blurPass.m_height);
     glUniform4f(3, context.m_windowPos.x, context.m_windowPos.y,
                 context.m_windowPos.z, context.m_windowPos.w);
-    glUniform1f(4, context.m_cornerRadius /
-                       ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR);
+    glUniform1f(4,
+                context.m_cornerRadius / ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, context.m_sceneTex);
     glActiveTexture(GL_TEXTURE0);

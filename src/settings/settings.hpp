@@ -22,6 +22,9 @@ class SLSettings {
     float uiOpacity = 0.66f;
     int theme = 0;
 
+    double keybindRepeatFrequency = 30.0;
+    double keybindHoldDelayMs = 500.0;
+
     bool autosaveAtLevelEnd = true;
     bool autosaveAtInterval = true;
     double autosaveInterval = 180.0;
@@ -61,6 +64,8 @@ class SLSettings {
 
     bool backwardsStepping = false;
     uint32_t stepsToSave = 120;
+
+    bool confirmSaveOverwrite = true;
 
     std::array<float, 4> layoutBgColor = {0.2828, 0.4901, 1.0, 1.0};
     std::array<float, 4> layoutGroundColor = {0.2828, 0.4901, 1.0, 1.0};
@@ -179,6 +184,9 @@ struct glz::meta<SLSettings> {
         "play_animations", &T::playAnimations,
         "pride_mode", &T::rainbowMode,
         "theme", &T::theme,
+        "keybind_repeat_frequency", &T::keybindRepeatFrequency,
+        "keybind_hold_delay_ms", &T::keybindHoldDelayMs,
+        "confirm_save_overwrite", &T::confirmSaveOverwrite,
         "tps", hide{&T::tps},
         "speed", hide{&T::speed},
         "real_time", &T::realTime,

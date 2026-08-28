@@ -696,8 +696,6 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
                 }
             }
         }
-
-        Bot::get()->hitboxes().draw(this);
     }
 
     void levelComplete() {

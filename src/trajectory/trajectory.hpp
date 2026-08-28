@@ -10,6 +10,7 @@
 #include "../settings/settings.hpp"
 #include "../shared/value/value.hpp"
 #include "Geode/cocos/cocoa/CCGeometry.h"
+#include "Geode/cocos/platform/CCPlatformMacros.h"
 
 class TrajectoryDrawNode : public cocos2d::CCDrawNode {
    public:
@@ -239,6 +240,15 @@ class Trajectory {
     void deactivateAllRemembered() {
         m_activatedObjectsP1.clear();
         m_activatedObjectsP2.clear();
+    }
+
+    ~Trajectory() {
+        m_fakePlayer1->m_maybeLastGroundObject = nullptr;
+        m_fakePlayer2->m_maybeLastGroundObject = nullptr;
+
+        CC_SAFE_RELEASE(m_fakePlayer1);
+        CC_SAFE_RELEASE(m_fakePlayer2);
+        CC_SAFE_RELEASE(m_node);
     }
 };
 

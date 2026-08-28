@@ -93,7 +93,6 @@ struct SLLevelEditorLayer : Modify<SLLevelEditorLayer, LevelEditorLayer> {
     void updateVisibility(float dt) override {
         LevelEditorLayer::updateVisibility(dt);
 
-        Bot::get()->hitboxes().draw(this);
         Bot::get()->trajectory().update(this);
     }
 

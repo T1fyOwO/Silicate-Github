@@ -4,6 +4,7 @@
 #include "bot/scheduler.hpp"
 #include "bot/updater.hpp"
 #include "render/renderer.hpp"
+#include "shared/value/value.hpp"
 
 using namespace geode::prelude;
 
@@ -12,6 +13,11 @@ using namespace geode::prelude;
 struct SLCCDirector : Modify<SLCCDirector, CCDirector> {
     void drawScene() {
         Renderer::get()->finishStop();
+
+        const auto settings = SLSettings::get();
+        SLBindingManager::get()->updateHeldKeybinds(
+            this->getDeltaTime(), settings->keybindRepeatFrequency,
+            settings->keybindHoldDelayMs);
 
         if (!Bot::get()->isEnabled()) {
             return CCDirector::drawScene();

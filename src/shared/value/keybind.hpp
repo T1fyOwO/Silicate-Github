@@ -263,7 +263,7 @@ class SLKeybind : public KeybindControl {
     }
 
     void applyValue(bool pressed, void* value, void* previous) override {
-        if (!m_active) return;
+        if (!m_active && (pressed || !m_enabled)) return;
 
         T& valueRef = *(T*)value;
         T& previousRef = *(T*)previous;
@@ -295,6 +295,8 @@ class SLKeybind : public KeybindControl {
                 break;
             }
             case KeybindType::Override: {
+                if (!pressed) return;
+
                 previousRef = valueRef;
                 valueRef = m_value;
                 break;
@@ -337,7 +339,8 @@ class SLKeybind : public KeybindControl {
             }
 
             if (std::isfinite(number) &&
-                (number < static_cast<double>(std::numeric_limits<T>::lowest()) ||
+                (number <
+                     static_cast<double>(std::numeric_limits<T>::lowest()) ||
                  number > static_cast<double>(std::numeric_limits<T>::max()))) {
                 return false;
             }
