@@ -108,7 +108,6 @@ void HitboxTrailUnit::drawInner(cocos2d::CCDrawNode* node, float width,
 
 void HitboxTrailUnit::drawCircle(cocos2d::CCDrawNode* node, float width,
                                  float* colors, float fillOpacity) {
-    auto* pl = GJBaseGameLayer::get();
     cocos2d::CCRect rect = m_rect;
     float radius = rect.size.width / 2.0;
     if (radius > 0) {
