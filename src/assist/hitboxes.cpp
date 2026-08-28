@@ -563,7 +563,9 @@ void Hitboxes::draw(GJBaseGameLayer* pl) {
         const float pointToPixelRatio = std::max(
             director->getWinSizeInPixels().width / director->getWinSize().width,
             director->getWinSizeInPixels().height /
-                director->getWinSize().height);
+                director->getWinSize().height) * pl->getScale();
+        // pl->getScale is for compatibility with Zoooom
+        // See https://github.com/BobbyShmurner/Zoom/blob/d62be4acb3537801a9cede48dea98e32f42fe585/src/desktop.cpp#L84-L88
 
         auto drawTrail = [&](std::deque<HitboxTrailUnit>& trail) {
             bool hasLast = false;
