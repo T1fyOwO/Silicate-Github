@@ -47,7 +47,7 @@ static void drawPlayerHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
 
     float radius = player->getObjectRect().size.width / 2.0;
     if (radius > 0 && HB_ENABLED(Type::PlayerCircle)) {
-        int segments = radius * 3 * sqrt(pl->m_gameState.m_cameraZoom);
+        u_int segments = (u_int)std::max(radius * 2.0f * sqrt(pl->m_gameState.m_cameraZoom), 8.0f);
 
         node->drawCircle(player->getPosition(), radius, {0.0, 0.0, 0.0, 0.0},
                          width, CC_COLOR(Type::PlayerCircle), segments);
@@ -112,7 +112,7 @@ void HitboxTrailUnit::drawCircle(cocos2d::CCDrawNode* node, float width,
     cocos2d::CCRect rect = m_rect;
     float radius = rect.size.width / 2.0;
     if (radius > 0) {
-        int segments = radius * 3 * sqrt(pl->m_gameState.m_cameraZoom);
+        u_int segments = (u_int)std::max(radius * 2.0f * sqrt(pl->m_gameState.m_cameraZoom), 8.0f);
 
         node->drawCircle(
             cocos2d::CCPoint{rect.getMidX(), rect.getMidY()}, radius,
@@ -482,7 +482,7 @@ static void drawObjectHitbox(cocos2d::CCDrawNode* node, GJBaseGameLayer* pl,
             float radius = object->m_objectRadius *
                            std::max(object->m_scaleX, object->m_scaleY);
             if (radius > 0) {
-                int segments = radius * sqrt(pl->m_gameState.m_cameraZoom);
+                u_int segments = (u_int)std::max(radius * 2.0f * sqrt(pl->m_gameState.m_cameraZoom), 8.0f);
 
                 node->drawCircle(object->getPosition(), radius, hb.hazard.fill,
                                  width, hb.hazard.line, segments);
