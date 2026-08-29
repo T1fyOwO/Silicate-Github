@@ -2,6 +2,7 @@
 
 #include "bot/bot.hpp"
 #include "bot/updater.hpp"
+#include "ui/widgets/info_modal.hpp"
 #include "ui/widgets/yes_no_modal.hpp"
 
 using namespace geode::prelude;
@@ -11,6 +12,7 @@ using namespace geode::prelude;
 struct SLCCScheduler : Modify<SLCCScheduler, CCScheduler> {
     void update(float dt) override {
         if (slui::isYesNoModalOpen()) return;
+        if (slui::isInfoModalOpen()) return;
 
         const auto bot = Bot::get();
         if (bot->updater().m_onlyRefresh || !bot->isEnabled()) {

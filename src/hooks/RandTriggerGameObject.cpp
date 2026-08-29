@@ -80,6 +80,6 @@ struct SLRandTriggerGameObject
             keys = {};
         }
 
-        layer->spawnGroup(groupID, false, 0.0, keys, 0, 0);
+        layer->spawnGroup(groupID, false, 0.0, keys, m_uniqueID, m_controlID);
     }
 };

@@ -128,7 +128,6 @@ bool Trajectory::iterate(GJBaseGameLayer* pl, PlayerObject* player, int mode,
     }
 
     phys::checkSpawnObjects(pl, player);
-    pl->m_effectManager->postCollisionCheck();
 
     m_node->drawSegment(position, player->getPosition(),
                         m_state->m_width->inner(),
@@ -324,8 +323,6 @@ TrajectoryPlayerData Trajectory::simulate(GJBaseGameLayer* pl, bool p1,
     }
 
     GJGameState state = pl->m_gameState;
-    EffectManagerState ems;
-    pl->m_effectManager->saveToState(ems);
     // std::vector<SavedObjectStateRef> savedObjects;
     // std::vector<SavedActiveObjectState> savedActiveObjects;
     // std::vector<SavedSpecialObjectState> savedSpecialObjects;
@@ -386,7 +383,6 @@ TrajectoryPlayerData Trajectory::simulate(GJBaseGameLayer* pl, bool p1,
     // }
 
     pl->m_gameState = state;
-    pl->m_effectManager->loadFromState(ems);
 
     // reinterpret_cast<void(*)(GJBaseGameLayer*)>(reinterpret_cast<void*>(geode::base::get()
     // + 0x398310))(pl);

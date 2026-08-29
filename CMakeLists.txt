@@ -42,6 +42,7 @@ add_library(${PROJECT_NAME} SHARED
     src/ui/manager.cpp
     src/ui/hook.cpp
     src/ui/theme.cpp
+    src/ui/widgets/info_modal.cpp
     src/ui/widgets/tooltip.cpp
     src/ui/widgets/yes_no_modal.cpp
 

@@ -15,6 +15,7 @@
 #include "shared/value/value.hpp"
 #include "trajectory/trajectory.hpp"
 #include "ui/manager.hpp"
+#include "ui/widgets/info_modal.hpp"
 #include "updater.hpp"
 
 #ifdef SILICATE_PROTECT
@@ -124,6 +125,12 @@ void Bot::initialize() {
     m_enabled->handle([&](bool& enabled) {
         if (PlayLayer::get()) {
             enabled = true;
+
+            slui::showInfoModal({
+                .title = "Error",
+                .message = "Please leave the level you're in to disable Silicate.",
+            });
+
             return;
         }
 

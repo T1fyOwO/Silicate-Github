@@ -12,6 +12,7 @@
 #include "replay/system.hpp"
 #include "shared/value/value.hpp"
 #include "ui/manager.hpp"
+#include "ui/widgets/info_modal.hpp"
 #include "ui/widgets/yes_no_modal.hpp"
 
 using namespace geode::prelude;
@@ -31,7 +32,7 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
     if (uMsg == WM_KILLFOCUS) {
         bindings->releaseAllHeldKeybinds();
-        if (!slui::isYesNoModalOpen()) {
+        if (!slui::isYesNoModalOpen() && !slui::isInfoModalOpen()) {
             Bot::get()->ui().m_state.m_visible->inner() = false;
         }
     }
@@ -52,14 +53,16 @@ LRESULT CALLBACK h_WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                               wParam, lParam);
     }
 
-    if (Bot::get()->ui().m_state.m_visible->inner()) {
+    bool uiVisible = Bot::get()->ui().m_state.m_visible->inner() || slui::isInfoModalOpen();
+
+    if (uiVisible) {
         ImGuiHookCtx::get().m_ctx.handleWndproc(hWnd, uMsg, wParam, lParam);
 
         const bool keyboardMessage =
             uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN || uMsg == WM_KEYUP ||
             uMsg == WM_SYSKEYUP || uMsg == WM_CHAR;
         const bool mouseMessage = uMsg >= WM_MOUSEFIRST && uMsg <= WM_MOUSELAST;
-        if (slui::isYesNoModalOpen() && (keyboardMessage || mouseMessage)) {
+        if ((slui::isYesNoModalOpen() || slui::isInfoModalOpen()) && (keyboardMessage || mouseMessage)) {
             return true;
         }
 

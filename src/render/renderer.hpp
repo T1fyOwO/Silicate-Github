@@ -20,6 +20,7 @@
 #include <thread>
 
 #include "dsp.hpp"
+#include "ui/widgets/info_modal.hpp"
 
 struct RendererSettings {
     int m_width = 3840;
@@ -100,6 +101,11 @@ class Renderer {
                 // PlayLayer::init took the view for a render that never
                 // happened
                 this->restoreView();
+                slui::showInfoModal({
+                    .title = "Renderer Error",
+                    .message = fmt::format("Failed to start recording: {}",
+                                           ret.unwrapErr()),
+                });
             }
         }
     }

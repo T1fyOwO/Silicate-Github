@@ -38,6 +38,7 @@
 #include "util/config.hpp"
 #include "widgets/checkbox.hpp"
 #include "widgets/image.hpp"
+#include "widgets/info_modal.hpp"
 #include "widgets/input.hpp"
 #include "widgets/tooltip.hpp"
 #include "widgets/yes_no_modal.hpp"
@@ -313,6 +314,12 @@ void UIManager::setup() {
     m_state.m_uiScale->handle([this](float& scale) {
         tabby::TabbyGlobalCfg::get().uiScale = scale * getWindowDpi();
         m_state.m_restartGameInfo = true;
+    });
+
+    m_state.m_visible->handle([](bool&) {
+        if (slui::isInfoModalOpen()) {
+            slui::hideInfoModal();
+        }
     });
 
     tabby::TabbyGlobalCfg::get().uiScale =
@@ -918,6 +925,8 @@ void UIManager::draw() {
         m_visibilityProgress = visible ? 1.0f : 0.0f;
     }
 
+    tabby::ScopedFont s(m_font);
+
     if (!visible) {
         auto view = CCEGLView::get();
 
@@ -925,10 +934,16 @@ void UIManager::draw() {
         bool shouldHide = false;
         if (pl) {
             shouldHide = !pl->m_isPaused && !pl->m_hasCompletedLevel &&
-                         !GameManager::get()->getGameVariable("0024");
+                         !GameManager::get()->getGameVariable("0024") &&
+                         !slui::isInfoModalOpen();
         }
 
         view->showCursor(!shouldHide);
+        slui::drawInfoModal([this]() {
+            renderBlurBg(16.0f, 1.5f, m_state.m_useShader->inner(), 0.0, false,
+                         0.45f);
+        });
+
         if (m_visibilityProgress <= 0.0f) {
             return;
         }
@@ -940,7 +955,6 @@ void UIManager::draw() {
                                   (3.0f - 2.0f * m_visibilityProgress);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, visibilityAlpha);
 
-    tabby::ScopedFont s(m_font);
     // clip all that start with m_state.m_replayName (case insensitive) (std)
 
     tabby::window("Silicate", [this, bot, popupShaderFn]() {
@@ -1793,7 +1807,15 @@ void UIManager::draw() {
                             tabby::text("Waiting to enter level...");
                         } else if (PlayLayer::get() &&
                                    tabby::button("Start Here").pressed) {
-                            (void)renderer->start();
+                            auto res = renderer->start();
+                            if (res.isErr()) {
+                                geode::log::error("Failed to start renderer: {}", res.unwrapErr());
+                                slui::showInfoModal({
+                                    .title = "Renderer Error",
+                                    .message = fmt::format("Failed to start recording: {}",
+                                                           res.unwrapErr()),
+                                });
+                            }
                         }
 
                         tabby::checkbox("Auto Exit on Finish",
@@ -2608,6 +2630,11 @@ void UIManager::draw() {
             2.5 * tabby::TabbyGlobalCfg::get().uiScale);
 
         slui::drawYesNoModal([this]() {
+            renderBlurBg(16.0f, 1.5f, m_state.m_useShader->inner(), 0.0, false,
+                         0.45f);
+        });
+
+        slui::drawInfoModal([this]() {
             renderBlurBg(16.0f, 1.5f, m_state.m_useShader->inner(), 0.0, false,
                          0.45f);
         });

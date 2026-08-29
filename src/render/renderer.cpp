@@ -337,15 +337,19 @@ geode::Result<> Renderer::start() {
         return geode::Err("Failed to allocate output context");
     }
 
+    if (m_settings.m_codec.empty()) {
+        return geode::Err("Codec field is empty - please input a valid codec");
+    }
+
     m_videoCodec = ff->avcodec_find_encoder_by_name(m_settings.m_codec.c_str());
     if (!m_videoCodec) {
-        return geode::Err("Failed to find codec");
+        return geode::Err("Failed to find codec (Invalid codec?)");
     }
 
     m_audioCodec =
         ff->avcodec_find_encoder_by_name(m_settings.m_audioCodec.c_str());
     if (!m_audioCodec) {
-        return geode::Err("Failed to find audio codec");
+        return geode::Err("Failed to find audio codec (Invalid audio codec?)");
     }
 
     m_videoCodecCtx.reset(ff->avcodec_alloc_context3(m_videoCodec));
@@ -449,7 +453,8 @@ geode::Result<> Renderer::start() {
     geode::log::info("Opening video codec `{}`...", m_settings.m_codec);
     if (ff->avcodec_open2(m_videoCodecCtx.get(), m_videoCodec, &video_opts) <
         0) {
-        return geode::Err("Failed to open codec");
+        return geode::Err(
+            fmt::format("Failed to open codec `{}`\n\nDouble check if this codec is supported by your system, alongside other potentially ill formed options (resolution, bitrate)", m_settings.m_codec));
     }
 
     geode::log::info("Allocating audio context...");
@@ -477,7 +482,8 @@ geode::Result<> Renderer::start() {
 
     geode::log::info("Opening audio codec `{}`...", m_settings.m_audioCodec);
     if (ff->avcodec_open2(m_audioCodecCtx.get(), m_audioCodec, &opts) < 0) {
-        return geode::Err("Failed to open audio codec");
+        return geode::Err(fmt::format("Failed to open audio codec `{}` (are you sure your system supports it?)",
+                                      m_settings.m_audioCodec));
     }
 
     geode::log::info("Trying to free opts...");
@@ -508,7 +514,8 @@ geode::Result<> Renderer::start() {
     m_audioStream->time_base = m_audioCodecCtx->time_base;
 
     if (ff->avio_open(&m_formatCtx->pb, outPath.c_str(), AVIO_FLAG_WRITE) < 0) {
-        return geode::Err("Failed to open output file");
+        return geode::Err(
+            "Failed to open output file (possibly invalid permissions?)");
     }
 
     if (ff->avformat_write_header(m_formatCtx, nullptr) < 0) {
