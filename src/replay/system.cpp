@@ -22,8 +22,8 @@ void ReplaySystem::onReset(uint32_t newFrame) {
 
         if (!GJBaseGameLayer::get()->m_isPracticeMode &&
             !Bot::get()->practiceFix().m_isBackstep) {
-            m_teleportRandomState = m_teleportRandomState * 214013 + 2531011;
-            m_shakeRandomState = m_shakeRandomState * 214013 + 2531011;
+            m_teleportRandomState = m_startingSeedThisAttempt & 0x7FFF;
+            m_shakeRandomState = m_startingSeedThisAttempt & 0x7FFF;
             m_initialTPS = Bot::get()->updater().getTps();
         }
     } else {

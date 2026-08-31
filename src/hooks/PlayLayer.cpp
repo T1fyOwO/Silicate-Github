@@ -827,6 +827,8 @@ static void resetLevelSeedMidhook(SafetyHookContext&) {
         Bot::get()->replaySystem().m_startingSeedThisAttempt;
     Bot::get()->replaySystem().m_shakeRandomState =
         Bot::get()->replaySystem().m_startingSeedThisAttempt & 0x7FFF;
+    Bot::get()->replaySystem().m_teleportRandomState =
+        Bot::get()->replaySystem().m_startingSeedThisAttempt & 0x7FFF;
     Bot::get()->practiceFix().reseedAdvancedRandom(
         Bot::get()->replaySystem().m_startingSeedThisAttempt);
     // srand(static_cast<unsigned int>(

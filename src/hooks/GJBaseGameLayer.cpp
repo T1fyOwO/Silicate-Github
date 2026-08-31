@@ -702,18 +702,26 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
     }
 };
 
-static void shakeRandomOverride(SafetyHookContext& ctx) {
-    uint64_t& state = Bot::get()->replaySystem().m_shakeRandomState;
-    state = (int)((214013 * state + 2531011) >> 16) & 0x7FFF;
+static int advanceState(uint64_t& state) {
+    state = static_cast<int>((214013 * state + 2531011) >> 16) & 0x7FFF;
+    return state;
+}
 
-    ctx.rax = (uintptr_t)state;
+static void shakeRandomOverride(SafetyHookContext& ctx) {
+    static_assert(sizeof(uintptr_t) == sizeof(uint64_t));
+
+    uint64_t& state = Bot::get()->replaySystem().m_shakeRandomState;
+
+    ctx.rax = static_cast<uintptr_t>(advanceState(state));
+    ctx.rip += 6;  // skip the rand() call
 }
 
 static void teleportRandomOverride(SafetyHookContext& ctx) {
-    uint64_t& state = Bot::get()->replaySystem().m_teleportRandomState;
-    state = (int)((214013 * state + 2531011) >> 16) & 0x7FFF;
+    static_assert(sizeof(uintptr_t) == sizeof(uint64_t));
 
-    ctx.rax = (uintptr_t)state;
+    uint64_t& state = Bot::get()->replaySystem().m_teleportRandomState;
+
+    ctx.rax = static_cast<uintptr_t>(advanceState(state));
 }
 
 static void overrideCheckpointPlacement(SafetyHookContext& ctx) {
@@ -730,7 +738,7 @@ $execute {
                   shakeRandomOverride);
     util::midhook(geode::base::get() + 0x23E1E9, "shakeRandomOverride",
                   shakeRandomOverride);
-    util::midhook(geode::base::get() + 0x20FED3, "teleportRandomOverride",
+    util::midhook(geode::base::get() + 0x20FEDC, "teleportRandomOverride",
                   teleportRandomOverride);
     util::midhook(geode::base::get() + 0x3A3657, "checkpointPlacement",
                   overrideCheckpointPlacement);
