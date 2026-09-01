@@ -28,7 +28,9 @@ class PracticeFix;
 class TrajectoryManager;
 class Autoclicker;
 class Hitboxes;
+namespace labels {
 class LabelManager;
+}
 class CPSCounter;
 
 class Bot {
@@ -65,7 +67,7 @@ class Bot {
     TrajectoryManager& trajectory();
     Autoclicker& autoclicker();
     Hitboxes& hitboxes();
-    LabelManager& labels();
+    labels::LabelManager& labels();
     CPSCounter& cps();
 
     Mode m_mode = Recording;

@@ -55,6 +55,7 @@ SavedCheckpoint PracticeFix::createCheckpoint(CheckpointObject* obj,
                 m_advancedRandom | std::views::transform([](SavedAdvRand& s) {
                     return *s.m_randomState;
                 })),
+            .m_cpsData = Bot::get()->cps().getData(),
         };
 
         return checkpoint;
@@ -101,6 +102,7 @@ void PracticeFix::applyCheckpoint(SavedCheckpoint& cp) {
         bot->replaySystem().getCurrentRandomState() = cp.m_seedState;
         bot->replaySystem().m_shakeRandomState = cp.m_shakeRandomState;
         bot->replaySystem().m_teleportRandomState = cp.m_teleportRandomState;
+        bot->cps().replaceTimestamps(cp.m_cpsData);
         if (cp.m_tps != bot->updater().m_tps->inner()) {
             bot->updater().m_tps->inner() = cp.m_tps;
             bot->updater().m_tps->notifyChange();

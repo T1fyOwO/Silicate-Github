@@ -6,6 +6,7 @@
 #include <Geode/Enums.hpp>
 #include <Geode/Geode.hpp>
 #include <Geode/binding/FMODAudioEngine.hpp>
+#include <Geode/utils/hash.hpp>
 #include <algorithm>
 #include <asp/fs/fs.hpp>
 #include <cctype>
@@ -19,6 +20,7 @@
 #include <widgets/button.hpp>
 #include <widgets/drag.hpp>
 
+#include "Geode/utils/general.hpp"
 #include "Geode/utils/string.hpp"
 #include "assist/autoclicker.hpp"
 #include "assist/hitboxes.hpp"
@@ -35,6 +37,7 @@
 #include "shared/value/value.hpp"
 #include "trajectory/trajectory.hpp"
 // #include "widgets/hotkey.hpp"
+#include "hashes.hpp"
 #include "imgui.h"
 #include "util/config.hpp"
 #include "widgets/checkbox.hpp"
@@ -445,6 +448,9 @@ void UIManager::setup() {
     for (auto& theme : s_themes) {
         theme.initialize();
     }
+
+    SLSettings::get()->theme =
+        std::clamp(SLSettings::get()->theme, 0, (int)s_themes.size() - 1);
 
     m_theme = &s_themes[SLSettings::get()->theme];
     m_state.m_themeState.selectedIndex = SLSettings::get()->theme;
@@ -918,7 +924,8 @@ void UIManager::draw() {
     };
 
     const auto tooltipShaderFn = [&]() {
-        renderBlurBg(8.0f, 1.5f, m_state.m_useShader->inner(), 0.0, false, 0.75f);
+        renderBlurBg(8.0f, 1.5f, m_state.m_useShader->inner(), 0.0, false,
+                     0.75f);
     };
 
     cfg.uiScale = m_state.m_uiScale->inner() * getWindowDpi();
@@ -1264,7 +1271,8 @@ void UIManager::draw() {
                 slui::tooltip(
                     "Record a death input in the replay. The next death or "
                     "restart you perform will be saved as an action in the "
-                    "replay.", tooltipShaderFn);
+                    "replay.",
+                    tooltipShaderFn);
 
                 if (m_state.m_showExperimentalFeatures) {
                     tabby::checkbox(
@@ -1274,7 +1282,8 @@ void UIManager::draw() {
                     slui::tooltip(
                         "Add additional visual frames in between physics ticks "
                         "to allow for a smoother appearance of gameplay. Note "
-                        "that this has accuracy issues.", tooltipShaderFn);
+                        "that this has accuracy issues.",
+                        tooltipShaderFn);
                 }
 
                 tabby::divider();
@@ -1285,7 +1294,8 @@ void UIManager::draw() {
                 slui::tooltip(
                     "Force a specific seed to always be selected when entering "
                     "a level. Note that the level seed is always saved in the "
-                    "replay, no matter if this option is enabled or not.", tooltipShaderFn);
+                    "replay, no matter if this option is enabled or not.",
+                    tooltipShaderFn);
 
                 animated("SeedOverrideOptions",
                          Bot::get()->replaySystem().m_overrideSeed, [&]() {
@@ -1507,7 +1517,8 @@ void UIManager::draw() {
                         slui::tooltip(
                             "Releases each click on the same frame instead of "
                             "alternating between a press and release every "
-                            "interval.", tooltipShaderFn);
+                            "interval.",
+                            tooltipShaderFn);
                         tabby::dropdown(
                             "Player##Autoclicker", m_state.m_autoclickerState,
                             *reinterpret_cast<int*>(
@@ -1533,7 +1544,8 @@ void UIManager::draw() {
                     slui::tooltip(
                         "Perform wave inputs correctly, so that no matter the "
                         "gravity, the wave can always be controlled as if it "
-                        "was normal gravity.", tooltipShaderFn);
+                        "was normal gravity.",
+                        tooltipShaderFn);
 
                     tabby::checkbox("No Mirror Portals",
                                     Bot::get()->updater().m_noMirror->inner());
@@ -1552,7 +1564,8 @@ void UIManager::draw() {
 
                 slui::tooltip(
                     "Prevent the player from dying, by pausing the game a "
-                    "frame earlier. Requires backstepping to be enabled.", tooltipShaderFn);
+                    "frame earlier. Requires backstepping to be enabled.",
+                    tooltipShaderFn);
 
                 tabby::checkbox(
                     "Use Trajectory##PD",
@@ -1561,7 +1574,8 @@ void UIManager::draw() {
                 slui::tooltip(
                     "Whether to use trajectory to simulate forward to check if "
                     "the player has died instead of using backwards stepping "
-                    "when the player has died.", tooltipShaderFn);
+                    "when the player has died.",
+                    tooltipShaderFn);
                 // tabby::checkbox("Auto Flip On Death",
                 // Bot::get()->updater().m_autoFlipOnDeath->inner());
 
@@ -1576,7 +1590,8 @@ void UIManager::draw() {
                 slui::tooltip(
                     "When performing the next input, find the frame the player "
                     "would survive the longest had the input been performed. "
-                    "Requires backstepping to be enabled.", tooltipShaderFn);
+                    "Requires backstepping to be enabled.",
+                    tooltipShaderFn);
 
                 tabby::drag(
                     "Threshold##Prediction",
@@ -1586,7 +1601,8 @@ void UIManager::draw() {
                 slui::tooltip(
                     "A fraction of your trajectory length to use for Find Best "
                     "Frame. When a frame that survives that long is found, go "
-                    "to that frame and consider the best frame found.", tooltipShaderFn);
+                    "to that frame and consider the best frame found.",
+                    tooltipShaderFn);
 
                 // tabby::divider();
 
@@ -1625,92 +1641,114 @@ void UIManager::draw() {
                     tabby::text("No replay loaded.");
                 }
 
-                for (int i = 0; i < (int)inputs.size(); i++) {
-                    auto& input = inputs[i];
-                    if (i == inputIndex) {
-                        if (m_state.m_editIndex != inputIndex) {
-                            m_state.m_editIndex = inputIndex;
-                            ImGui::SetScrollHereY();
-                        }
+                ImGuiListClipper clipper;
+                clipper.Begin(static_cast<int>(inputs.size()));
 
-                        ImGui::PushStyleColor(ImGuiCol_Text,
-                                              {1.0, 0.5, 0.5, 1.0});
-                    }
+                const bool scrollToInput = inputIndex >= 0 &&
+                                           inputIndex < (int)inputs.size() &&
+                                           m_state.m_editIndex != inputIndex;
+                if (scrollToInput) {
+                    m_state.m_editIndex = inputIndex;
+                    clipper.IncludeItemsByIndex(inputIndex, inputIndex + 1);
+                }
 
-                    if (tabby::drag(std::string("Frame##") + std::to_string(i),
-                                    input.m_frame, 0ull,
-                                    std::numeric_limits<uint64_t>::max())
-                            .changed) {
-                        Bot::get()->updater().m_tps->notifyChange();
-                        input.recalculateDelta(i == 0 ? 0
-                                                      : inputs[i - 1].m_frame);
-                        if ((int)inputs.size() > i + 1) {
-                            inputs[i + 1].recalculateDelta(inputs[i].m_frame);
-                        }
-                    }
-
-                    tabby::fraction(
-                        2.0,
-                        [&]() {
-                            if (tabby::checkbox(std::string("Holding##") +
-                                                    std::to_string(i),
-                                                input.m_holding)
-                                    .pressed) {
-                                Bot::get()->updater().m_tps->notifyChange();
+                bool inputsChanged = false;
+                while (clipper.Step() && !inputsChanged) {
+                    for (int i = clipper.DisplayStart; i < clipper.DisplayEnd;
+                         i++) {
+                        auto& input = inputs[i];
+                        if (i == inputIndex) {
+                            if (scrollToInput) {
+                                ImGui::SetScrollHereY();
                             }
 
-                            tabby::spacer(16.0);
+                            ImGui::PushStyleColor(ImGuiCol_Text,
+                                                  {1.0, 0.5, 0.5, 1.0});
+                        }
 
-                            if (tabby::checkbox(std::string("Player 2##") +
-                                                    std::to_string(i),
-                                                input.m_player2)
-                                    .pressed) {
-                                Bot::get()->updater().m_tps->notifyChange();
+                        if (tabby::drag(
+                                std::string("Frame##") + std::to_string(i),
+                                input.m_frame, 0ull,
+                                std::numeric_limits<uint64_t>::max())
+                                .changed) {
+                            Bot::get()->updater().m_tps->notifyChange();
+                            input.recalculateDelta(
+                                i == 0 ? 0 : inputs[i - 1].m_frame);
+                            if ((int)inputs.size() > i + 1) {
+                                inputs[i + 1].recalculateDelta(
+                                    inputs[i].m_frame);
                             }
+                        }
 
-                            if (tabby::button(std::string("Add Below##") +
-                                              std::to_string(i))
-                                    .pressed) {
-                                if (i + 1 == (int)inputs.size()) {
-                                    inputs.push_back(slc::v3::Action(
-                                        inputs[i].m_frame, 0,
-                                        slc::v3::Action::ActionType::Jump,
-                                        !inputs[i].m_holding,
-                                        inputs[i].m_player2));
-                                } else {
-                                    inputs.insert(
-                                        inputs.begin() + i + 1,
-                                        slc::v3::Action(
+                        tabby::fraction(
+                            2.0,
+                            [&]() {
+                                if (tabby::checkbox(std::string("Holding##") +
+                                                        std::to_string(i),
+                                                    input.m_holding)
+                                        .pressed) {
+                                    Bot::get()->updater().m_tps->notifyChange();
+                                }
+
+                                tabby::spacer(16.0);
+
+                                if (tabby::checkbox(std::string("Player 2##") +
+                                                        std::to_string(i),
+                                                    input.m_player2)
+                                        .pressed) {
+                                    Bot::get()->updater().m_tps->notifyChange();
+                                }
+
+                                if (tabby::button(std::string("Add Below##") +
+                                                  std::to_string(i))
+                                        .pressed) {
+                                    if (i + 1 == (int)inputs.size()) {
+                                        inputs.push_back(slc::v3::Action(
                                             inputs[i].m_frame, 0,
                                             slc::v3::Action::ActionType::Jump,
                                             !inputs[i].m_holding,
                                             inputs[i].m_player2));
-                                }
-                            }
-
-                            tabby::spacer(16.0);
-
-                            if (tabby::button(std::string("Remove##") +
-                                              std::to_string(i))
-                                    .pressed) {
-                                inputs.erase(inputs.begin() + i);
-                                if ((int)inputs.size() > i) {
-                                    inputs[i].recalculateDelta(
-                                        i == 0 ? 0 : inputs[i - 1].m_frame);
+                                    } else {
+                                        inputs.insert(inputs.begin() + i + 1,
+                                                      slc::v3::Action(
+                                                          inputs[i].m_frame, 0,
+                                                          slc::v3::Action::
+                                                              ActionType::Jump,
+                                                          !inputs[i].m_holding,
+                                                          inputs[i].m_player2));
+                                    }
+                                    inputsChanged = true;
                                 }
 
-                                if ((int)inputs.size() > i + 1) {
-                                    inputs[i + 1].recalculateDelta(
-                                        inputs[i].m_frame);
+                                tabby::spacer(16.0);
+
+                                if (tabby::button(std::string("Remove##") +
+                                                  std::to_string(i))
+                                        .pressed) {
+                                    inputs.erase(inputs.begin() + i);
+                                    if ((int)inputs.size() > i) {
+                                        inputs[i].recalculateDelta(
+                                            i == 0 ? 0 : inputs[i - 1].m_frame);
+                                    }
+
+                                    if ((int)inputs.size() > i + 1) {
+                                        inputs[i + 1].recalculateDelta(
+                                            inputs[i].m_frame);
+                                    }
+                                    inputsChanged = true;
                                 }
-                            }
-                        },
-                        16.0);
+                            },
+                            16.0);
 
-                    tabby::divider();
+                        tabby::divider();
 
-                    if (i == inputIndex) {
-                        ImGui::PopStyleColor();
+                        if (i == inputIndex) {
+                            ImGui::PopStyleColor();
+                        }
+
+                        if (inputsChanged) {
+                            break;
+                        }
                     }
                 }
             });
@@ -1747,9 +1785,10 @@ void UIManager::draw() {
 
                                 geode::log::info("Verifying checksum...");
                                 uint64_t hash = fnv1aHash(data);
-                                constexpr uint64_t EXPECTED =
-                                    0x44618c661fa11607ull;
-                                if (hash != EXPECTED) {
+                                Sha256 sha = geode::sha256(data);
+
+                                if (hash != hashes::FFMPEG_FNV1A_EXPECTED &&
+                                    sha != hashes::FFMPEG_SHA256_EXPECTED) {
                                     geode::log::error(
                                         "Invalid checksum! Aborting FFmpeg "
                                         "loader");
@@ -1837,7 +1876,8 @@ void UIManager::draw() {
                                 "of the level."
                                 "\n\%id\% - The ID of the level."
                                 "\n\%creator\% - The name of the "
-                                "creator of the level.", tooltipShaderFn);
+                                "creator of the level.",
+                                tooltipShaderFn);
                         } else {
                             tabby::input_text(
                                 "Video Name", "Video",
@@ -1878,7 +1918,8 @@ void UIManager::draw() {
                                         renderer->m_autoExitLevel->inner());
                         slui::tooltip(
                             "Automatically leave the level when "
-                            "finishing a render.", tooltipShaderFn);
+                            "finishing a render.",
+                            tooltipShaderFn);
                     });
 
                 settingsCard(
@@ -1989,7 +2030,8 @@ void UIManager::draw() {
                             "SSB Fix", Bot::get()->updater().m_ssbFix->inner());
                         slui::tooltip(
                             "Compensates audio timing for the game's scroll "
-                            "speed bug while rendering.", tooltipShaderFn);
+                            "speed bug while rendering.",
+                            tooltipShaderFn);
 
                         if (m_state.m_showExperimentalFeatures) {
                             tabby::drag("Visual FPS",
@@ -2077,7 +2119,8 @@ void UIManager::draw() {
                 slui::tooltip(
                     "Creates a keybind for Frame Advance and immediately "
                     "starts listening. You can choose a different action "
-                    "below.", tooltipShaderFn);
+                    "below.",
+                    tooltipShaderFn);
 
                 tabby::divider();
 
@@ -2177,7 +2220,8 @@ void UIManager::draw() {
                             slui::tooltip(
                                 "Click, then press a key combination. Escape "
                                 "cancels; Backspace or Delete clears the "
-                                "shortcut.", tooltipShaderFn);
+                                "shortcut.",
+                                tooltipShaderFn);
 
                             const bool tagValidBeforeInput =
                                 b->hasValue(edit.tag);
@@ -2213,7 +2257,8 @@ void UIManager::draw() {
                                 "The Silicate setting or action controlled by "
                                 "this "
                                 "keybind. Start typing to see available "
-                                "actions.", tooltipShaderFn);
+                                "actions.",
+                                tooltipShaderFn);
 
                             if (actionState.held) {
                                 m_state.m_editedKeybindTag = kb.get();
@@ -2244,7 +2289,8 @@ void UIManager::draw() {
                                 "Toggle switches between the assigned and "
                                 "previous "
                                 "value. Set once only applies the assigned "
-                                "value.", tooltipShaderFn);
+                                "value.",
+                                tooltipShaderFn);
 
                             if (kb->getTypeKey() == keybind::typeKey<bool>()) {
                                 bool assignedValue =
@@ -2259,7 +2305,8 @@ void UIManager::draw() {
                                 }
                                 slui::tooltip(
                                     "Choose whether this shortcut assigns the "
-                                    "action to on or off.", tooltipShaderFn);
+                                    "action to on or off.",
+                                    tooltipShaderFn);
                             } else {
                                 const bool valueValid =
                                     kb->canParse(edit.value);
@@ -2275,7 +2322,8 @@ void UIManager::draw() {
                                 slui::tooltip(
                                     "The value assigned to the action when "
                                     "this "
-                                    "shortcut activates.", tooltipShaderFn);
+                                    "shortcut activates.",
+                                    tooltipShaderFn);
 
                                 if (valueState.held) {
                                     m_state.m_editedKeybindValue = kb.get();
@@ -2464,7 +2512,8 @@ void UIManager::draw() {
                             "{:.0f} RPS");
                 slui::tooltip(
                     "How often held Toggle and Override keybinds activate "
-                    "after the hold delay.", tooltipShaderFn);
+                    "after the hold delay.",
+                    tooltipShaderFn);
 
                 tabby::drag("Hold Trigger Delay##Keybinds",
                             settings->keybindHoldDelayMs, 0.0, 5000.0, 10.0f,
@@ -2472,7 +2521,8 @@ void UIManager::draw() {
                 slui::tooltip(
                     "How long a Toggle or Override key must be held before it "
                     "starts repeating. A normal press still activates once "
-                    "immediately.", tooltipShaderFn);
+                    "immediately.",
+                    tooltipShaderFn);
 
                 tabby::divider();
 
@@ -2485,7 +2535,8 @@ void UIManager::draw() {
                 slui::tooltip(
                     "Whether to save the replay you're recording when "
                     "completing the level. Note that if a replay like that "
-                    "already exists, it makes a backup instead.", tooltipShaderFn);
+                    "already exists, it makes a backup instead.",
+                    tooltipShaderFn);
 
                 auto& rs = Bot::get()->replaySystem();
                 if (tabby::checkbox("Auto-Backup",
@@ -2584,11 +2635,26 @@ void UIManager::draw() {
 
                 tabby::text("Updater", m_medium);
 
-                tabby::checkbox("Lock Delta",
-                                bot->updater().m_lockDelta->inner());
+                if (tabby::checkbox("Lock Delta",
+                                    bot->updater().m_lockDelta->inner())
+                        .pressed) {
+                    if (!bot->updater().m_lockDelta->inner()) {
+                        slui::showInfoModal({
+                            .title = "Warning",
+                            .message =
+                                "You are disabling Lock Delta. This may "
+                                "cause physics to run incorrectly, skip "
+                                "frames, or cause other accuracy "
+                                "issues. Disable this option with care. "
+                                "Disabling this option also causes backwards "
+                                "stepping to drastically lose accuracy.",
+                        });
+                    }
+                }
                 slui::tooltip(
                     "Runs physics with a fixed delta time to improve replay "
-                    "consistency.", tooltipShaderFn);
+                    "consistency.",
+                    tooltipShaderFn);
 
                 tabby::checkbox("Real Time",
                                 bot->updater().m_realTime->inner());
@@ -2597,7 +2663,8 @@ void UIManager::draw() {
                     "Removes any UPR restrictions and allows the game to have "
                     "as many physics ticks as it wants per frame. This ensures "
                     "no slowdown, although for laggier levels will show "
-                    "visible lag.", tooltipShaderFn);
+                    "visible lag.",
+                    tooltipShaderFn);
 
                 animated(
                     "NonRealtimeOptions", !bot->updater().m_realTime->inner(),
@@ -2606,7 +2673,8 @@ void UIManager::draw() {
                                         bot->updater().m_dynamicUpr->inner());
                         slui::tooltip(
                             "Automatically adjusts the update limit per visual "
-                            "frame to maintain the target FPS.", tooltipShaderFn);
+                            "frame to maintain the target FPS.",
+                            tooltipShaderFn);
 
                         animated(
                             "DynamicUprOptions",
@@ -2627,7 +2695,8 @@ void UIManager::draw() {
 
                                 slui::tooltip(
                                     "How many physics ticks are allowed to run "
-                                    "per visual frame.", tooltipShaderFn);
+                                    "per visual frame.",
+                                    tooltipShaderFn);
 
                                 tabby::checkbox(
                                     "Use Visual Updates",
@@ -2638,7 +2707,8 @@ void UIManager::draw() {
                                     "number of ticks per visual frame for your "
                                     "current TPS. A max UPR of 1 with this "
                                     "option on will result in real time "
-                                    "playback, minus lag.", tooltipShaderFn);
+                                    "playback, minus lag.",
+                                    tooltipShaderFn);
                             },
                             false);
                     },
@@ -2653,7 +2723,8 @@ void UIManager::draw() {
                     bot->replaySystem().m_useAlternateHook->inner());
                 slui::tooltip(
                     "Records inputs directly from the button handler. This "
-                    "option is here for mod compatibility.", tooltipShaderFn);
+                    "option is here for mod compatibility.",
+                    tooltipShaderFn);
 
                 if (tabby::button("Disable Bot").pressed) {
                     Bot::get()->m_enabled->inner() = false;
@@ -2666,13 +2737,15 @@ void UIManager::draw() {
 
                 slui::tooltip(
                     "Disable all of Silicate's features. Note that you must be "
-                    "outside of a level for this button to do anything.", tooltipShaderFn);
+                    "outside of a level for this button to do anything.",
+                    tooltipShaderFn);
 
                 tabby::checkbox("Experimental Features",
                                 m_state.m_showExperimentalFeatures);
                 slui::tooltip(
                     "Enables features that are not fully tested and may be "
-                    "unstable.", tooltipShaderFn);
+                    "unstable.",
+                    tooltipShaderFn);
             });
         });
 

@@ -39,7 +39,7 @@ class Bot::Impl {
     Autoclicker m_autoclicker;
     Hitboxes m_hitboxes;
 
-    LabelManager m_labels;
+    labels::LabelManager m_labels;
     CPSCounter m_cps;
 
     friend class Bot;
@@ -56,36 +56,30 @@ BOT_GETTER(PracticeFix, practiceFix)
 BOT_GETTER(TrajectoryManager, trajectory)
 BOT_GETTER(Autoclicker, autoclicker)
 BOT_GETTER(Hitboxes, hitboxes)
-BOT_GETTER(LabelManager, labels)
+BOT_GETTER(labels::LabelManager, labels)
 BOT_GETTER(CPSCounter, cps)
 
 Bot::Bot() : m_impl(std::make_unique<Impl>()) {}
 Bot::~Bot() = default;
 
 void Bot::initialize() {
-#ifdef SILICATE_PROTECT
-    VMProtectBegin("BotInitialize");
+    std::filesystem::path dir = Mod::get()->getPersistentDir(true);
 
-    if (!VMProtectIsProtected()) {
-        MessageBoxA(NULL, "IMPORTANT NOTICE",
-                    "You're running an unprotected version of Silicate. Be "
-                    "careful about sharing this file with other users.",
-                    1);
+#define TRY_OR_LOG_ERR(x)                                \
+    if (auto _err = x; _err.isErr()) {                   \
+        geode::log::error("Failed to create {}: {}", #x, \
+                          _err.unwrapErr().message());   \
     }
 
-    VMProtectEnd();
-#endif
-    namespace fs = std::filesystem;
+    TRY_OR_LOG_ERR(asp::fs::createDirAll(dir / "replays"));
+    TRY_OR_LOG_ERR(asp::fs::createDirAll(dir / "videos"));
+    TRY_OR_LOG_ERR(asp::fs::createDirAll(dir / "logs"));
+    TRY_OR_LOG_ERR(asp::fs::createDirAll(dir / "presets"));
+    TRY_OR_LOG_ERR(asp::fs::createDirAll(dir / "scripts"));
+    TRY_OR_LOG_ERR(asp::fs::createDirAll(dir / "backups"));
+    TRY_OR_LOG_ERR(asp::fs::createDirAll(dir / "libraries"));
 
-    fs::path dir = Mod::get()->getPersistentDir(true);
-
-    fs::create_directories(dir / "replays");
-    fs::create_directories(dir / "videos");
-    fs::create_directories(dir / "logs");
-    fs::create_directories(dir / "presets");
-    fs::create_directories(dir / "scripts");
-    fs::create_directories(dir / "backups");
-    fs::create_directories(dir / "libraries");
+#undef TRY_OR_LOG_ERR
 
     // CBF fix
     geode::Mod* cbf =
@@ -93,6 +87,12 @@ void Bot::initialize() {
     if (cbf) {
         cbf->setSettingValue("soft-toggle", true);
         cbf->setSettingValue("physics-bypass", false);
+    }
+
+    geode::Mod* sip =
+        Loader::get()->getInstalledMod("chizz.superb-input-precision");
+    if (sip) {
+        sip->setSettingValue("mod-enabled", false);
     }
 
     std::filesystem::path settingsPath =
@@ -146,7 +146,10 @@ void Bot::initialize() {
         std::ranges::for_each(patches, [enabled](Patch* p) {
             if (enabled) {
                 geode::log::info("Enabling patch at 0x{:x}", p->getAddress());
-                (void)p->enable();
+                if (GEODE_UNWRAP_IF_ERR(e, p->enable())) {
+                    geode::log::error("Failed to enable patch at 0x{:x}: {}",
+                                      p->getAddress(), e);
+                }
             } else {
                 geode::log::info("Disabling patch at 0x{:x}", p->getAddress());
                 (void)p->disable();
@@ -160,7 +163,10 @@ void Bot::initialize() {
             }
 
             if (enabled) {
-                (void)h->enable();
+                if (GEODE_UNWRAP_IF_ERR(e, h->enable())) {
+                    geode::log::error("Failed to enable hook for {}: {}",
+                                      h->getDisplayName(), e);
+                }
             } else {
                 (void)h->disable();
             }

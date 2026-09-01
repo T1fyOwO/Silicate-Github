@@ -6,8 +6,6 @@ set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /FS")
-
 project(silicate VERSION 1.0.0)
 
 set(ARC_FEATURE_FULL OFF CACHE BOOL "" FORCE)
@@ -89,7 +87,7 @@ add_compile_definitions(TABBY_USE_WIN32)
 add_compile_definitions(TABBY_USE_OPENGL3)
 target_link_libraries(${PROJECT_NAME} tabby)
 
-CPMAddPackage("gh:stephenberry/glaze#main")
+CPMAddPackage("gh:stephenberry/glaze#dce5e0f")
 target_link_libraries(${PROJECT_NAME} glaze::glaze)
 
 CPMAddPackage("gh:zyantific/zydis#bffbb61")

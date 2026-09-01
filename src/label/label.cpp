@@ -11,7 +11,9 @@
 #include "checkpoint/fix.hpp"
 #include "replay/system.hpp"
 
-using namespace geode::prelude;
+using namespace cocos2d;
+
+namespace labels {
 
 #define GET_PLAYER_VAR(display, var, precision)                             \
     {                                                                       \
@@ -95,8 +97,18 @@ LabelManager::LabelManager() {
             auto player = pl->m_player1;
             auto player2 = pl->m_player2;
 
-            static bool isVelocityUnroundingLoaded =
-                Loader::get()->isModLoaded("chizz.velocity-unrounding");
+            constexpr auto queryVelocityUnrounding = []() {
+                static geode::Mod* v = geode::Loader::get()->getInstalledMod(
+                    "chizz.velocity-unrounding");
+
+                if (v) {
+                    return v->getSettingValue<bool>("mod-enabled");
+                }
+
+                return false;
+            };
+
+            bool isVelocityUnroundingLoaded = queryVelocityUnrounding();
 
             if (isVelocityUnroundingLoaded) {
                 if (pl->m_gameState.m_isDualMode && player2) {
@@ -358,6 +370,11 @@ LabelManager::LabelManager() {
                              return fmt::format("Waiting For First Input");
                          }
 
+                         if (rs.m_inputIndex > length) {
+                             return fmt::format("Invalid Input Index: {} / {}",
+                                                rs.m_inputIndex, length);
+                         }
+
                          auto& action =
                              rs.m_actionAtom.m_actions[rs.m_inputIndex - 1];
 
@@ -374,10 +391,12 @@ LabelManager::LabelManager() {
 #undef GET_PLAYER_VAR
 
 void LabelManager::update(bool forceDisable) {
-    float heights[4] = {0, 0, 0, 0};
+    std::array<float, 4> heights = {0, 0, 0, 0};
 
     for (auto& label : m_labels) {
-        int anchorIndex = static_cast<int>(label.m_config.m_anchor);
+        int anchorIndex = std::clamp(static_cast<int>(label.m_config.m_anchor),
+                                     0, static_cast<int>(heights.size()) - 1);
+
         label.update(forceDisable || !this->m_globalEnabled, m_requiresRefresh,
                      heights[anchorIndex]);
     }
@@ -402,13 +421,13 @@ struct glz::meta<Label::LabelConfig> {
 void LabelManager::readFromConfig() {
     std::unordered_map<std::string, Label::LabelConfig> labels;
 
-    auto labelConfigPath = Mod::get()->getConfigDir() / "labels.json";
+    auto labelConfigPath = geode::Mod::get()->getConfigDir() / "labels.json";
     if (asp::fs::exists(labelConfigPath)) {
         auto ec = glz::read_file_json(labels, labelConfigPath.string(),
                                       std::string{});
         if (ec) {
-            log::error("Failed to read label config: {}",
-                       ec.custom_error_message);
+            geode::log::error("Failed to read label config: {}",
+                              ec.custom_error_message);
             return;
         }
     }
@@ -427,12 +446,13 @@ void LabelManager::writeToConfig() {
         labels[label.getId()] = label.m_config;
     }
 
-    auto labelConfigPath = Mod::get()->getConfigDir() / "labels.json";
+    auto labelConfigPath = geode::Mod::get()->getConfigDir() / "labels.json";
 
     auto ec = glz::write_file_json<glz::opts{.prettify = true}>(
         labels, labelConfigPath.string(), std::string{});
     if (ec) {
-        log::error("Failed to write label config: {}", ec.custom_error_message);
+        geode::log::error("Failed to write label config: {}",
+                          ec.custom_error_message);
     }
 }
 
@@ -441,7 +461,7 @@ CCLabelBMFont* Label::get() {
     CCLabelBMFont* label = nullptr;
 
     std::string cocosLabelID =
-        fmt::format("{}/label.{}", Mod::get()->getID(), m_id);
+        fmt::format("{}/label.{}", geode::Mod::get()->getID(), m_id);
     if (pl) {
         if (auto l = pl->getChildByID(cocosLabelID); l) {
             return dynamic_cast<CCLabelBMFont*>(l);
@@ -540,3 +560,5 @@ void Label::update(bool forceDisable, bool refresh, float& currentHeight) {
 $on_mod(Loaded) { Bot::get()->labels().readFromConfig(); }
 
 $on_mod(DataSaved) { Bot::get()->labels().writeToConfig(); }
+
+}  // namespace labels

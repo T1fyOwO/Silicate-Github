@@ -248,6 +248,17 @@ void Renderer::restoreView() {
     resizeShaderLayer(m_windowSize);
 }
 
+void Renderer::withOriginalView(const std::function<void()>& callback) {
+    if (!m_viewResized) {
+        callback();
+        return;
+    }
+
+    silentChangeSize(m_windowSize);
+    callback();
+    silentChangeSize(alignedRenderSize(m_settings));
+}
+
 geode::Result<> Renderer::start() {
     geode::log::info("Starting renderer");
 
@@ -255,6 +266,25 @@ geode::Result<> Renderer::start() {
     if (m_recording || m_recordThread.joinable()) {
         return geode::Err("A render is already in progress");
     }
+
+#define GUARD(expr, msg)        \
+    if (expr) {              \
+        return geode::Err(msg); \
+    }
+
+    GUARD(m_settings.m_width <= 0 || m_settings.m_height <= 0,
+          "Width or height is negative or zero (min is 1)");
+    GUARD(m_settings.m_width >= 10'000 || m_settings.m_height >= 10'000,
+          "Width or height too large (max is 10000)");
+    GUARD(m_settings.m_fps <= 0 || !std::isfinite(m_settings.m_fps),
+          "Invalid render FPS");
+    GUARD(m_settings.m_bitrate < 0 || !std::isfinite(m_settings.m_bitrate),
+          "Invalid bitrate");
+    GUARD(m_settings.m_extension.empty(), "Extension must not be empty");
+    GUARD(m_settings.m_fadeInTime < 0 || m_settings.m_fadeOutTime < 0,
+          "Fade times must be non-negative");
+    GUARD(m_settings.m_fadeOutTime > m_settings.m_afterEndTime,
+          "Fade out time must be less than or equal to after end time");
 
     FMODAudioEngine::get()->m_system->getSoftwareFormat(&m_sampleRate, nullptr,
                                                         &m_channels);
@@ -453,7 +483,10 @@ geode::Result<> Renderer::start() {
     if (ff->avcodec_open2(m_videoCodecCtx.get(), m_videoCodec, &video_opts) <
         0) {
         return geode::Err(
-            fmt::format("Failed to open codec `{}`\n\nDouble check if this codec is supported by your system, alongside other potentially ill formed options (resolution, bitrate)", m_settings.m_codec));
+            fmt::format("Failed to open codec `{}`\n\nDouble check if this "
+                        "codec is supported by your system, alongside other "
+                        "potentially ill formed options (resolution, bitrate)",
+                        m_settings.m_codec));
     }
 
     geode::log::info("Allocating audio context...");
@@ -481,8 +514,10 @@ geode::Result<> Renderer::start() {
 
     geode::log::info("Opening audio codec `{}`...", m_settings.m_audioCodec);
     if (ff->avcodec_open2(m_audioCodecCtx.get(), m_audioCodec, &opts) < 0) {
-        return geode::Err(fmt::format("Failed to open audio codec `{}` (are you sure your system supports it?)",
-                                      m_settings.m_audioCodec));
+        return geode::Err(
+            fmt::format("Failed to open audio codec `{}` (are you sure your "
+                        "system supports it?)",
+                        m_settings.m_audioCodec));
     }
 
     geode::log::info("Trying to free opts...");

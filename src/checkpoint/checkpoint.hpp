@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "assist/cps.hpp"
+
 struct SavedPlayerCheckpoint {
     void apply(PlayerObject* p);
     static SavedPlayerCheckpoint create(PlayerObject* p);
@@ -285,6 +287,8 @@ struct SavedCheckpoint {
 
     std::vector<GameObject*> m_brokenObjects;
     std::vector<uint64_t> m_advRandStates;
+
+    CPSCounter::CPSData m_cpsData;
 };
 
 #endif  // CHECKPOINT_HPP

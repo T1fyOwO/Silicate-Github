@@ -9,6 +9,8 @@
 
 using namespace cocos2d;
 
+namespace labels {
+
 class Label;
 
 class RawLabel {
@@ -108,5 +110,7 @@ class LabelManager {
     void update(bool forceDisable = false);
     LabelManager();
 };
+
+}  // namespace labels
 
 #endif  // LABEL_LABEL_HPP

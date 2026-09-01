@@ -83,6 +83,9 @@ struct glz::meta<RendererSettings> {
 
 class Renderer {
    public:
+    // SAFETY:
+    // renderer should only go out of scope (destructor) when shutting down the
+    // game therefore this is safe to do
     ~Renderer() {
         // don't let the thread get charlie kirked and cause a crash
         if (m_recordThread.joinable()) {
@@ -119,6 +122,7 @@ class Renderer {
     void acquireView();
     void reacquireView();
     void restoreView();
+    void withOriginalView(const std::function<void()>& callback);
 
     void signalStop() {
         {

@@ -15,6 +15,7 @@
 #include "checkpoint/fix.hpp"
 #include "physics/collisions.hpp"
 #include "physics/gjbasegamelayer.hpp"
+#include "render/renderer.hpp"
 #include "replay/system.hpp"
 #include "trajectory/trajectory.hpp"
 #include "util/midhook.hpp"
@@ -643,7 +644,9 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
             background = 13;
         }
 
-        GJBaseGameLayer::createBackground(background);
+        Renderer::get()->withOriginalView([this, background] {
+            GJBaseGameLayer::createBackground(background);
+        });
     }
 
     void createMiddleground(int mg) {

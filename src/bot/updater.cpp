@@ -763,6 +763,9 @@ static void updateBackstepPlayers(PlayLayer* pl) {
         s_backstepJobSteps, (int)bot->practiceFix().m_storedFrames.size() - 1);
     size_t index =
         bot->practiceFix().m_storedFrames.size() - s_backstepJobSteps - 1;
+
+    if (bot->practiceFix().m_storedFrames.empty()) return;
+
     auto& c = bot->practiceFix().m_storedFrames.at(index);
     pl->m_player1->setPosition(c.m_player1.m_position);
     pl->m_player1->setRotation(c.m_player1.m_ccRotation);
