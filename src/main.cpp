@@ -1,5 +1,4 @@
 #include <Geode/Geode.hpp>
-#include <Geode/modify/CCScheduler.hpp>
 
 using namespace geode::prelude;
 

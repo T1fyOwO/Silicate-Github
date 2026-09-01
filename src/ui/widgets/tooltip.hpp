@@ -12,6 +12,7 @@ struct TooltipOptions {
 
 // Attach a tooltip to the widget drawn immediately before this call.
 void tooltip(std::string_view description,
+             const std::function<void()>& renderBackground = {},
              TooltipOptions options = TooltipOptions{});
 
 }  // namespace slui

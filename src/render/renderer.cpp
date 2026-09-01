@@ -11,6 +11,7 @@
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/ShaderLayer.hpp>
+#include <asp/fs/fs.hpp>
 #include <iostream>
 #include <safetyhook.hpp>
 #include <string>
@@ -30,8 +31,6 @@
 using namespace geode::prelude;
 
 constexpr int ALIGNMENT = 1;
-
-namespace fs = std::filesystem;
 
 struct RenderOpt {
     std::string m_name;
@@ -64,7 +63,7 @@ static std::vector<RenderOpt> parseArgs(std::stringstream& in) {
     return opts;
 }
 
-void Renderer::saveSettings(fs::path& path) const {
+void Renderer::saveSettings(std::filesystem::path& path) const {
     auto& settings = m_settings;
 
     (void)glz::write_file_json<glz::opts{.prettify = true}>(
@@ -140,8 +139,8 @@ static std::string getDefaultCodec() {
 
 void Renderer::initializeDefaults() { m_settings.m_codec = getDefaultCodec(); }
 
-void Renderer::loadSettings(fs::path& path) {
-    if (!fs::exists(path)) {
+void Renderer::loadSettings(asp::fs::path& path) {
+    if (!asp::fs::exists(path)) {
         return;
     }
 

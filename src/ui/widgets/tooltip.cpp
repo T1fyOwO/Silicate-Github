@@ -34,7 +34,7 @@ void cleanUnusedStates(int frame) {
 
 namespace slui {
 
-void tooltip(std::string_view description, TooltipOptions options) {
+void tooltip(std::string_view description, const std::function<void()>& renderBackground, TooltipOptions options) {
     ImGuiID itemId = ImGui::GetItemID();
     if (itemId == 0) {
         itemId = ImGui::GetID(description.data(),
@@ -86,14 +86,22 @@ void tooltip(std::string_view description, TooltipOptions options) {
     ImGui::SetNextWindowPos(state.position);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, style.Alpha * easedOpacity);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
-                        ImVec2(12.0f * scale, 9.0f * scale));
+                        ImVec2(18.0f * scale, 12.0f * scale));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f * scale);
-    ImGui::PushStyleColor(ImGuiCol_PopupBg,
-                          ImVec4(0.055f, 0.06f, 0.075f, 0.96f));
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.88f, 0.92f, 1.0f, 0.18f));
+    if (renderBackground) {
+        ImGui::PushStyleColor(ImGuiCol_PopupBg,
+                              ImVec4(0.055f, 0.06f, 0.075f, 0.0f));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.88f, 0.92f, 1.0f, 0.0f));
+    } else {
+        ImGui::PushStyleColor(ImGuiCol_PopupBg,
+                              ImVec4(0.055f, 0.06f, 0.075f, 0.96f));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.88f, 0.92f, 1.0f, 0.18f));
+    }
 
     if (ImGui::BeginTooltip()) {
+        if (renderBackground) renderBackground();
+
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() +
                                options.maxWidth * scale);
         ImGui::TextUnformatted(description.data(),

@@ -743,7 +743,8 @@ struct BackstepPlayerData {
     float m_rotation{};
 
     BackstepPlayerData() {}
-    BackstepPlayerData(PlayerObject* p) : m_position(p->m_position), m_rotation(p->getRotation()) {}
+    BackstepPlayerData(PlayerObject* p)
+        : m_position(p->m_position), m_rotation(p->getRotation()) {}
 
     void operator()(PlayerObject* p) {
         p->setPosition(m_position);
@@ -758,12 +759,11 @@ static BackstepPlayerData s_backstepP2{};
 
 static void updateBackstepPlayers(PlayLayer* pl) {
     auto* bot = Bot::get();
-    s_backstepJobSteps = std::min(s_backstepJobSteps, (int)bot->practiceFix().m_storedFrames.size() - 1);
+    s_backstepJobSteps = std::min(
+        s_backstepJobSteps, (int)bot->practiceFix().m_storedFrames.size() - 1);
     size_t index =
         bot->practiceFix().m_storedFrames.size() - s_backstepJobSteps - 1;
-    auto& c = bot->practiceFix().m_storedFrames.at(
-        index
-    );
+    auto& c = bot->practiceFix().m_storedFrames.at(index);
     pl->m_player1->setPosition(c.m_player1.m_position);
     pl->m_player1->setRotation(c.m_player1.m_ccRotation);
     pl->m_player1->setOpacity(127);
@@ -844,15 +844,18 @@ $execute {
             s_backstepJobSteps = 1;
             s_backstepP1 = BackstepPlayerData(PlayLayer::get()->m_player1);
             s_backstepP2 = BackstepPlayerData(PlayLayer::get()->m_player2);
-            s_backstepJob = bot->scheduler().schedule([p]() {
-                if (s_backstepJobSteps == 0) return;
-                if (PlayLayer::get() && p && Bot::get()->practiceFix().canRestoreState() &&
-                    !Renderer::get()->isRecording()) {
-                    Bot::get()->updater().backwardsStep(s_backstepJobSteps);
-                    PlayLayer::get()->m_player1->setOpacity(255);
-                    PlayLayer::get()->m_player2->setOpacity(255);
-                }
-            }, SLSettings::get()->keybindHoldDelayMs / 1000.0f * 1.5f);
+            s_backstepJob = bot->scheduler().schedule(
+                [p]() {
+                    if (s_backstepJobSteps == 0) return;
+                    if (PlayLayer::get() && p &&
+                        Bot::get()->practiceFix().canRestoreState() &&
+                        !Renderer::get()->isRecording()) {
+                        Bot::get()->updater().backwardsStep(s_backstepJobSteps);
+                        PlayLayer::get()->m_player1->setOpacity(255);
+                        PlayLayer::get()->m_player2->setOpacity(255);
+                    }
+                },
+                SLSettings::get()->keybindHoldDelayMs / 1000.0f * 1.5f);
         }
 
         auto pl = PlayLayer::get();

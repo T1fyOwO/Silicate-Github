@@ -1,4 +1,5 @@
 #include <Geode/Geode.hpp>
+#include <asp/fs/fs.hpp>
 #include <filesystem>
 
 #include "assist/autoclicker.hpp"
@@ -706,7 +707,7 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
 
         auto path = Mod::get()->getPersistentDir() / "replays" /
                     (bot->ui().m_state.m_replayName + ".slc");
-        if (std::filesystem::exists(path)) {
+        if (asp::fs::exists(path)) {
             bot->replaySystem().createBackup();
         } else {
             bot->replaySystem().save(path,

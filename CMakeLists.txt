@@ -10,7 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 
 project(silicate VERSION 1.0.0)
 
-set(ARC_FEATURE_FULL ON CACHE BOOL "" FORCE)
+set(ARC_FEATURE_FULL OFF CACHE BOOL "" FORCE)
 
 add_library(${PROJECT_NAME} SHARED
     src/main.cpp

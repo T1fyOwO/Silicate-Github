@@ -195,7 +195,7 @@ class KeybindControl {
     // identifies the T this control casts `value`/`previous` to
     virtual keybind::TypeKey getTypeKey() const = 0;
 
-    virtual void applyValue(bool pressed, void* value, void* previous) = 0;
+    virtual bool applyValue(bool pressed, void* value, void* previous) = 0;
     virtual void fromString(const std::string& str) = 0;
     const virtual std::string toString() = 0;
 
@@ -262,15 +262,15 @@ class SLKeybind : public KeybindControl {
         return keybind::typeKey<T>();
     }
 
-    void applyValue(bool pressed, void* value, void* previous) override {
-        if (!m_active && (pressed || !m_enabled)) return;
+    bool applyValue(bool pressed, void* value, void* previous) override {
+        if (!m_active && (pressed || !m_enabled)) return false;
 
         T& valueRef = *(T*)value;
         T& previousRef = *(T*)previous;
 
         switch (m_type) {
             case KeybindType::Toggle: {
-                if (!pressed) return;
+                if (!pressed) return false;
 
                 if (valueRef == m_value) {
                     valueRef = previousRef;
@@ -295,13 +295,15 @@ class SLKeybind : public KeybindControl {
                 break;
             }
             case KeybindType::Override: {
-                if (!pressed) return;
+                if (!pressed) return false;
 
                 previousRef = valueRef;
                 valueRef = m_value;
                 break;
             }
         }
+
+        return true;
     }
 
     /**

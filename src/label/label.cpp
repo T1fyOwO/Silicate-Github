@@ -1,6 +1,7 @@
 #include "label.hpp"
 
 #include <Geode/binding/GJBaseGameLayer.hpp>
+#include <asp/fs/fs.hpp>
 #include <glaze/glaze.hpp>
 
 #include "assist/cps.hpp"
@@ -402,7 +403,7 @@ void LabelManager::readFromConfig() {
     std::unordered_map<std::string, Label::LabelConfig> labels;
 
     auto labelConfigPath = Mod::get()->getConfigDir() / "labels.json";
-    if (std::filesystem::exists(labelConfigPath)) {
+    if (asp::fs::exists(labelConfigPath)) {
         auto ec = glz::read_file_json(labels, labelConfigPath.string(),
                                       std::string{});
         if (ec) {

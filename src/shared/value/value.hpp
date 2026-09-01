@@ -66,9 +66,10 @@ class SLBindingManager {
             return false;
         }
 
-        keybind->applyValue(pressed, value->second->getValue(),
-                            value->second->getPrevious());
-        value->second->notifyChange();
+        bool triggered = keybind->applyValue(pressed, value->second->getValue(),
+                                             value->second->getPrevious());
+        if (triggered) value->second->notifyChange();
+
         return true;
     }
 

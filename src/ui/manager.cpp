@@ -7,6 +7,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/binding/FMODAudioEngine.hpp>
 #include <algorithm>
+#include <asp/fs/fs.hpp>
 #include <cctype>
 #include <deque>
 #include <slc/formats/v3/atom.hpp>
@@ -401,26 +402,36 @@ void UIManager::setup() {
     }
 
     m_state.m_replayNames.clear();
-    for (const auto& entry : std::filesystem::directory_iterator(
-             Mod::get()->getPersistentDir() / "replays")) {
-        if (entry.is_regular_file() && entry.path().extension() == ".slc") {
-            m_state.m_replayNames.push_back(entry.path().stem().string());
+    if (auto iter =
+            asp::fs::iterdir(Mod::get()->getPersistentDir() / "replays");
+        iter.isOk()) {
+        for (const auto& entry : iter.unwrap()) {
+            if (entry.is_regular_file() && entry.path().extension() == ".slc") {
+                m_state.m_replayNames.push_back(entry.path().stem().string());
+            }
         }
     }
 
     m_state.m_presetNames.clear();
-    for (const auto& entry : std::filesystem::directory_iterator(
-             Mod::get()->getPersistentDir() / "presets")) {
-        if (entry.is_regular_file() && entry.path().extension() == ".json") {
-            m_state.m_presetNames.push_back(entry.path().stem().string());
+    if (auto iter =
+            asp::fs::iterdir(Mod::get()->getPersistentDir() / "presets");
+        iter.isOk()) {
+        for (const auto& entry : iter.unwrap()) {
+            if (entry.is_regular_file() &&
+                entry.path().extension() == ".json") {
+                m_state.m_presetNames.push_back(entry.path().stem().string());
+            }
         }
     }
 
     m_state.m_scriptNames.clear();
-    for (const auto& entry : std::filesystem::directory_iterator(
-             Mod::get()->getPersistentDir() / "scripts")) {
-        if (entry.is_regular_file() && entry.path().extension() == ".lua") {
-            m_state.m_scriptNames.push_back(entry.path().stem().string());
+    if (auto iter =
+            asp::fs::iterdir(Mod::get()->getPersistentDir() / "scripts");
+        iter.isOk()) {
+        for (const auto& entry : iter.unwrap()) {
+            if (entry.is_regular_file() && entry.path().extension() == ".lua") {
+                m_state.m_scriptNames.push_back(entry.path().stem().string());
+            }
         }
     }
 
@@ -906,6 +917,10 @@ void UIManager::draw() {
                      m_state.m_opacity->inner());
     };
 
+    const auto tooltipShaderFn = [&]() {
+        renderBlurBg(8.0f, 1.5f, m_state.m_useShader->inner(), 0.0, false, 0.75f);
+    };
+
     cfg.uiScale = m_state.m_uiScale->inner() * getWindowDpi();
     const bool visible = m_state.m_visible->inner();
     if (!visible) SLBindingManager::get()->stopEdit();
@@ -957,7 +972,7 @@ void UIManager::draw() {
 
     // clip all that start with m_state.m_replayName (case insensitive) (std)
 
-    tabby::window("Silicate", [this, bot, popupShaderFn]() {
+    tabby::window("Silicate", [this, bot, popupShaderFn, tooltipShaderFn]() {
         applyNewStyle();
 
         if (m_state.m_useShader->inner()) {
@@ -1114,13 +1129,15 @@ void UIManager::draw() {
                 if (m_state.m_lastReplayName != rs.m_replayName) {
                     m_state.m_lastReplayName = rs.m_replayName;
                     m_state.m_replayNames.clear();
-                    for (const auto& entry :
-                         std::filesystem::directory_iterator(
-                             Mod::get()->getPersistentDir() / "replays")) {
-                        if (entry.is_regular_file() &&
-                            entry.path().extension() == ".slc") {
-                            m_state.m_replayNames.push_back(
-                                entry.path().stem().string());
+                    if (auto iter = asp::fs::iterdir(
+                            Mod::get()->getPersistentDir() / "replays");
+                        iter.isOk()) {
+                        for (const auto& entry : iter.unwrap()) {
+                            if (entry.is_regular_file() &&
+                                entry.path().extension() == ".slc") {
+                                m_state.m_replayNames.push_back(
+                                    entry.path().stem().string());
+                            }
                         }
                     }
                 }
@@ -1140,20 +1157,21 @@ void UIManager::draw() {
                             rs.save(path);
 
                             m_state.m_replayNames.clear();
-                            for (const auto& entry :
-                                 std::filesystem::directory_iterator(
-                                     Mod::get()->getPersistentDir() /
-                                     "replays")) {
-                                if (entry.is_regular_file() &&
-                                    entry.path().extension() == ".slc") {
-                                    m_state.m_replayNames.push_back(
-                                        entry.path().stem().string());
+                            if (auto iter = asp::fs::iterdir(
+                                    Mod::get()->getPersistentDir() / "replays");
+                                iter.isOk()) {
+                                for (const auto& entry : iter.unwrap()) {
+                                    if (entry.is_regular_file() &&
+                                        entry.path().extension() == ".slc") {
+                                        m_state.m_replayNames.push_back(
+                                            entry.path().stem().string());
+                                    }
                                 }
                             }
                         };
 
                         if (SLSettings::get()->confirmSaveOverwrite &&
-                            std::filesystem::exists(path)) {
+                            asp::fs::exists(path)) {
                             slui::showYesNoModal({
                                 .title = "Overwrite?",
                                 .message = fmt::format(
@@ -1246,7 +1264,7 @@ void UIManager::draw() {
                 slui::tooltip(
                     "Record a death input in the replay. The next death or "
                     "restart you perform will be saved as an action in the "
-                    "replay.");
+                    "replay.", tooltipShaderFn);
 
                 if (m_state.m_showExperimentalFeatures) {
                     tabby::checkbox(
@@ -1256,7 +1274,7 @@ void UIManager::draw() {
                     slui::tooltip(
                         "Add additional visual frames in between physics ticks "
                         "to allow for a smoother appearance of gameplay. Note "
-                        "that this has accuracy issues.");
+                        "that this has accuracy issues.", tooltipShaderFn);
                 }
 
                 tabby::divider();
@@ -1267,7 +1285,7 @@ void UIManager::draw() {
                 slui::tooltip(
                     "Force a specific seed to always be selected when entering "
                     "a level. Note that the level seed is always saved in the "
-                    "replay, no matter if this option is enabled or not.");
+                    "replay, no matter if this option is enabled or not.", tooltipShaderFn);
 
                 animated("SeedOverrideOptions",
                          Bot::get()->replaySystem().m_overrideSeed, [&]() {
@@ -1433,20 +1451,43 @@ void UIManager::draw() {
 
                 auto& backsteppingEnabled =
                     Bot::get()->updater().m_backwardsStepping->inner();
-                settingsCard(
-                    "BacksteppingCard", "Backstepping", &backsteppingEnabled,
-                    m_medium, [&]() {
-                        if (tabby::drag("Steps",
-                                        Bot::get()
-                                            ->practiceFix()
-                                            .m_maxStoredFrames->inner(),
-                                        1u, 2400u)
-                                .changed) {
-                            Bot::get()
-                                ->practiceFix()
-                                .m_maxStoredFrames->notifyChange();
-                        }
-                    });
+                if (settingsCard("BacksteppingCard", "Backstepping",
+                                 &backsteppingEnabled, m_medium, [&]() {
+                                     if (tabby::drag(
+                                             "Steps",
+                                             Bot::get()
+                                                 ->practiceFix()
+                                                 .m_maxStoredFrames->inner(),
+                                             1u, 2400u)
+                                             .changed) {
+                                         Bot::get()
+                                             ->practiceFix()
+                                             .m_maxStoredFrames->notifyChange();
+                                     }
+                                 })) {
+                    if (backsteppingEnabled &&
+                        !Bot::get()->updater().m_lockDelta->inner()) {
+                        slui::showYesNoModal({
+                            .title = "Enable Lock Delta?",
+                            .message =
+                                "You have enabled backwards stepping, "
+                                "but Lock Delta is disabled. Using "
+                                "backwards stepping without Lock Delta "
+                                "enabled will cause replay breaks and "
+                                "inaccuracies.\n\nWould you like to "
+                                "enable Lock Delta as well? Note that you may "
+                                "also enable it manually in the Settings tab.",
+                            .onYes =
+                                []() {
+                                    Bot::get()->updater().m_lockDelta->inner() =
+                                        true;
+                                    Bot::get()
+                                        ->updater()
+                                        .m_lockDelta->notifyChange();
+                                },
+                        });
+                    }
+                }
 
                 // tabby::checkbox("Run Full Updates",
                 // Bot::get()->updater().m_fullGamePrediction->inner());
@@ -1466,7 +1507,7 @@ void UIManager::draw() {
                         slui::tooltip(
                             "Releases each click on the same frame instead of "
                             "alternating between a press and release every "
-                            "interval.");
+                            "interval.", tooltipShaderFn);
                         tabby::dropdown(
                             "Player##Autoclicker", m_state.m_autoclickerState,
                             *reinterpret_cast<int*>(
@@ -1492,7 +1533,7 @@ void UIManager::draw() {
                     slui::tooltip(
                         "Perform wave inputs correctly, so that no matter the "
                         "gravity, the wave can always be controlled as if it "
-                        "was normal gravity.");
+                        "was normal gravity.", tooltipShaderFn);
 
                     tabby::checkbox("No Mirror Portals",
                                     Bot::get()->updater().m_noMirror->inner());
@@ -1511,7 +1552,7 @@ void UIManager::draw() {
 
                 slui::tooltip(
                     "Prevent the player from dying, by pausing the game a "
-                    "frame earlier. Requires backstepping to be enabled.");
+                    "frame earlier. Requires backstepping to be enabled.", tooltipShaderFn);
 
                 tabby::checkbox(
                     "Use Trajectory##PD",
@@ -1520,7 +1561,7 @@ void UIManager::draw() {
                 slui::tooltip(
                     "Whether to use trajectory to simulate forward to check if "
                     "the player has died instead of using backwards stepping "
-                    "when the player has died.");
+                    "when the player has died.", tooltipShaderFn);
                 // tabby::checkbox("Auto Flip On Death",
                 // Bot::get()->updater().m_autoFlipOnDeath->inner());
 
@@ -1535,7 +1576,7 @@ void UIManager::draw() {
                 slui::tooltip(
                     "When performing the next input, find the frame the player "
                     "would survive the longest had the input been performed. "
-                    "Requires backstepping to be enabled.");
+                    "Requires backstepping to be enabled.", tooltipShaderFn);
 
                 tabby::drag(
                     "Threshold##Prediction",
@@ -1545,7 +1586,7 @@ void UIManager::draw() {
                 slui::tooltip(
                     "A fraction of your trajectory length to use for Find Best "
                     "Frame. When a frame that survives that long is found, go "
-                    "to that frame and consider the best frame found.");
+                    "to that frame and consider the best frame found.", tooltipShaderFn);
 
                 // tabby::divider();
 
@@ -1731,25 +1772,37 @@ void UIManager::draw() {
                                     return;
                                 }
 
-                                namespace fs = std::filesystem;
-
                                 auto libDir = Mod::get()->getPersistentDir() /
                                               "libraries";
                                 geode::log::info(
                                     "Copying dlls from temp dir `{}`...",
                                     ffmpegDir);
+
+                                (void)asp::fs::createDir(libDir);
+
                                 for (const auto& entry :
-                                     fs::directory_iterator(ffmpegDir)) {
+                                     asp::fs::iterdir(ffmpegDir).unwrap()) {
                                     if (entry.path().extension() == ".dll") {
-                                        fs::copy_file(
-                                            entry,
-                                            libDir / entry.path().filename(),
-                                            fs::copy_options::
-                                                overwrite_existing);
+                                        if (auto e = asp::fs::copy(
+                                                entry,
+                                                libDir /
+                                                    entry.path().filename(),
+                                                std::filesystem::copy_options::
+                                                    overwrite_existing);
+                                            e.isErr()) {
+                                            geode::log::error(
+                                                "failed to copy file: {}",
+                                                e.unwrapErr().message());
+                                        }
                                     }
                                 }
 
-                                fs::remove_all(ffmpegDir);
+                                if (auto e = asp::fs::removeAll(ffmpegDir);
+                                    e.isErr()) {
+                                    geode::log::error(
+                                        "failed to delete temp ffmpeg dir: {}",
+                                        e.unwrapErr().message());
+                                }
 
                                 Renderer::get()->loadFFmpeg();
                                 m_ffmpegDownloadProgress = -1.0;
@@ -1784,7 +1837,7 @@ void UIManager::draw() {
                                 "of the level."
                                 "\n\%id\% - The ID of the level."
                                 "\n\%creator\% - The name of the "
-                                "creator of the level.");
+                                "creator of the level.", tooltipShaderFn);
                         } else {
                             tabby::input_text(
                                 "Video Name", "Video",
@@ -1809,11 +1862,14 @@ void UIManager::draw() {
                                    tabby::button("Start Here").pressed) {
                             auto res = renderer->start();
                             if (res.isErr()) {
-                                geode::log::error("Failed to start renderer: {}", res.unwrapErr());
+                                geode::log::error(
+                                    "Failed to start renderer: {}",
+                                    res.unwrapErr());
                                 slui::showInfoModal({
                                     .title = "Renderer Error",
-                                    .message = fmt::format("Failed to start recording: {}",
-                                                           res.unwrapErr()),
+                                    .message = fmt::format(
+                                        "Failed to start recording: {}",
+                                        res.unwrapErr()),
                                 });
                             }
                         }
@@ -1822,7 +1878,7 @@ void UIManager::draw() {
                                         renderer->m_autoExitLevel->inner());
                         slui::tooltip(
                             "Automatically leave the level when "
-                            "finishing a render.");
+                            "finishing a render.", tooltipShaderFn);
                     });
 
                 settingsCard(
@@ -1836,7 +1892,7 @@ void UIManager::draw() {
                                 auto path = Mod::get()->getPersistentDir() /
                                             "presets" /
                                             (m_state.m_presetName + ".json");
-                                if (std::filesystem::exists(path)) {
+                                if (asp::fs::exists(path)) {
                                     renderer->loadSettings(path);
                                 } else {
                                     geode::log::error(
@@ -1933,7 +1989,7 @@ void UIManager::draw() {
                             "SSB Fix", Bot::get()->updater().m_ssbFix->inner());
                         slui::tooltip(
                             "Compensates audio timing for the game's scroll "
-                            "speed bug while rendering.");
+                            "speed bug while rendering.", tooltipShaderFn);
 
                         if (m_state.m_showExperimentalFeatures) {
                             tabby::drag("Visual FPS",
@@ -2021,7 +2077,7 @@ void UIManager::draw() {
                 slui::tooltip(
                     "Creates a keybind for Frame Advance and immediately "
                     "starts listening. You can choose a different action "
-                    "below.");
+                    "below.", tooltipShaderFn);
 
                 tabby::divider();
 
@@ -2121,7 +2177,7 @@ void UIManager::draw() {
                             slui::tooltip(
                                 "Click, then press a key combination. Escape "
                                 "cancels; Backspace or Delete clears the "
-                                "shortcut.");
+                                "shortcut.", tooltipShaderFn);
 
                             const bool tagValidBeforeInput =
                                 b->hasValue(edit.tag);
@@ -2157,7 +2213,7 @@ void UIManager::draw() {
                                 "The Silicate setting or action controlled by "
                                 "this "
                                 "keybind. Start typing to see available "
-                                "actions.");
+                                "actions.", tooltipShaderFn);
 
                             if (actionState.held) {
                                 m_state.m_editedKeybindTag = kb.get();
@@ -2188,7 +2244,7 @@ void UIManager::draw() {
                                 "Toggle switches between the assigned and "
                                 "previous "
                                 "value. Set once only applies the assigned "
-                                "value.");
+                                "value.", tooltipShaderFn);
 
                             if (kb->getTypeKey() == keybind::typeKey<bool>()) {
                                 bool assignedValue =
@@ -2203,7 +2259,7 @@ void UIManager::draw() {
                                 }
                                 slui::tooltip(
                                     "Choose whether this shortcut assigns the "
-                                    "action to on or off.");
+                                    "action to on or off.", tooltipShaderFn);
                             } else {
                                 const bool valueValid =
                                     kb->canParse(edit.value);
@@ -2219,7 +2275,7 @@ void UIManager::draw() {
                                 slui::tooltip(
                                     "The value assigned to the action when "
                                     "this "
-                                    "shortcut activates.");
+                                    "shortcut activates.", tooltipShaderFn);
 
                                 if (valueState.held) {
                                     m_state.m_editedKeybindValue = kb.get();
@@ -2408,7 +2464,7 @@ void UIManager::draw() {
                             "{:.0f} RPS");
                 slui::tooltip(
                     "How often held Toggle and Override keybinds activate "
-                    "after the hold delay.");
+                    "after the hold delay.", tooltipShaderFn);
 
                 tabby::drag("Hold Trigger Delay##Keybinds",
                             settings->keybindHoldDelayMs, 0.0, 5000.0, 10.0f,
@@ -2416,7 +2472,7 @@ void UIManager::draw() {
                 slui::tooltip(
                     "How long a Toggle or Override key must be held before it "
                     "starts repeating. A normal press still activates once "
-                    "immediately.");
+                    "immediately.", tooltipShaderFn);
 
                 tabby::divider();
 
@@ -2429,7 +2485,7 @@ void UIManager::draw() {
                 slui::tooltip(
                     "Whether to save the replay you're recording when "
                     "completing the level. Note that if a replay like that "
-                    "already exists, it makes a backup instead.");
+                    "already exists, it makes a backup instead.", tooltipShaderFn);
 
                 auto& rs = Bot::get()->replaySystem();
                 if (tabby::checkbox("Auto-Backup",
@@ -2532,7 +2588,7 @@ void UIManager::draw() {
                                 bot->updater().m_lockDelta->inner());
                 slui::tooltip(
                     "Runs physics with a fixed delta time to improve replay "
-                    "consistency.");
+                    "consistency.", tooltipShaderFn);
 
                 tabby::checkbox("Real Time",
                                 bot->updater().m_realTime->inner());
@@ -2541,7 +2597,7 @@ void UIManager::draw() {
                     "Removes any UPR restrictions and allows the game to have "
                     "as many physics ticks as it wants per frame. This ensures "
                     "no slowdown, although for laggier levels will show "
-                    "visible lag.");
+                    "visible lag.", tooltipShaderFn);
 
                 animated(
                     "NonRealtimeOptions", !bot->updater().m_realTime->inner(),
@@ -2550,7 +2606,7 @@ void UIManager::draw() {
                                         bot->updater().m_dynamicUpr->inner());
                         slui::tooltip(
                             "Automatically adjusts the update limit per visual "
-                            "frame to maintain the target FPS.");
+                            "frame to maintain the target FPS.", tooltipShaderFn);
 
                         animated(
                             "DynamicUprOptions",
@@ -2571,7 +2627,7 @@ void UIManager::draw() {
 
                                 slui::tooltip(
                                     "How many physics ticks are allowed to run "
-                                    "per visual frame.");
+                                    "per visual frame.", tooltipShaderFn);
 
                                 tabby::checkbox(
                                     "Use Visual Updates",
@@ -2582,7 +2638,7 @@ void UIManager::draw() {
                                     "number of ticks per visual frame for your "
                                     "current TPS. A max UPR of 1 with this "
                                     "option on will result in real time "
-                                    "playback, minus lag.");
+                                    "playback, minus lag.", tooltipShaderFn);
                             },
                             false);
                     },
@@ -2597,7 +2653,7 @@ void UIManager::draw() {
                     bot->replaySystem().m_useAlternateHook->inner());
                 slui::tooltip(
                     "Records inputs directly from the button handler. This "
-                    "option is here for mod compatibility.");
+                    "option is here for mod compatibility.", tooltipShaderFn);
 
                 if (tabby::button("Disable Bot").pressed) {
                     Bot::get()->m_enabled->inner() = false;
@@ -2610,13 +2666,13 @@ void UIManager::draw() {
 
                 slui::tooltip(
                     "Disable all of Silicate's features. Note that you must be "
-                    "outside of a level for this button to do anything.");
+                    "outside of a level for this button to do anything.", tooltipShaderFn);
 
                 tabby::checkbox("Experimental Features",
                                 m_state.m_showExperimentalFeatures);
                 slui::tooltip(
                     "Enables features that are not fully tested and may be "
-                    "unstable.");
+                    "unstable.", tooltipShaderFn);
             });
         });
 

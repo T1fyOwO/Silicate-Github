@@ -2,6 +2,7 @@
 
 #include <Geode/Geode.hpp>
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
+#include <asp/fs/fs.hpp>
 #include <filesystem>
 
 #include "assist/autoclicker.hpp"
@@ -110,7 +111,8 @@ void Bot::initialize() {
     if (settings.lastLoadedPreset != "") {
         auto presetPath = Mod::get()->getPersistentDir() / "presets" /
                           std::string(settings.lastLoadedPreset + ".json");
-        if (std::filesystem::exists(presetPath)) {
+
+        if (asp::fs::exists(presetPath)) {
             geode::log::info("Loading preset {}", settings.lastLoadedPreset);
             Renderer::get()->loadSettings(presetPath);
             Bot::get()->ui().m_state.m_presetName = settings.lastLoadedPreset;
@@ -128,7 +130,8 @@ void Bot::initialize() {
 
             slui::showInfoModal({
                 .title = "Error",
-                .message = "Please leave the level you're in to disable Silicate.",
+                .message =
+                    "Please leave the level you're in to disable Silicate.",
             });
 
             return;

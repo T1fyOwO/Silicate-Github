@@ -3,6 +3,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <asp/fs/fs.hpp>
 #include <chrono>
 #include <filesystem>
 #include <slc/formats/v3/replay.hpp>
@@ -70,7 +71,7 @@ void ReplaySystem::onExit() { m_inputIndex = 0; }
 using Replay = slc::v3::Replay<>;
 
 void ReplaySystem::save(std::filesystem::path path, bool noOverwrite) {
-    if (noOverwrite && std::filesystem::exists(path)) {
+    if (noOverwrite && asp::fs::exists(path)) {
         geode::log::info("Not overwriting replay at {}", path);
         return;
     }
@@ -164,7 +165,7 @@ void ReplaySystem::processSlc2(slc::v2::Replay<ReplayMeta>& replay) {
 }
 
 void ReplaySystem::load(std::filesystem::path path) {
-    if (!std::filesystem::exists(path)) {
+    if (!asp::fs::exists(path)) {
         geode::log::error(
             "Failed to load slc3 replay from {}; file does not exist", path);
         return;
@@ -207,14 +208,17 @@ static std::filesystem::path createBackupPath(const std::string& name) {
 }
 
 void ReplaySystem::backupExisting(std::filesystem::path path) {
-    if (!std::filesystem::exists(path)) {
+    if (!asp::fs::exists(path)) {
         return;
     }
 
     std::string name = geode::utils::string::pathToString(path.stem());
     auto newPath = createBackupPath(name);
-    std::filesystem::copy(path, newPath,
-                          std::filesystem::copy_options::skip_existing);
+    if (auto e = asp::fs::copy(path, newPath,
+                               std::filesystem::copy_options::skip_existing);
+        e.isErr()) {
+        geode::log::error("Failed to backup file: {}", e.unwrapErr().message());
+    }
 }
 
 void ReplaySystem::createBackup() {
