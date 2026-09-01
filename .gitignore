@@ -61,3 +61,5 @@ build-*/
 # CLion
 .idea/
 /cmake-build-*/
+
+.zed
