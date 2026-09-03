@@ -13,6 +13,7 @@ class Theme {
     RenderPass m_postprocessPass;
     uint32_t m_texture = 0;
     double m_opacityExp;
+    bool m_applyAfter;
 
     std::string m_name;
 
@@ -21,9 +22,10 @@ class Theme {
     void resize(uint32_t width, uint32_t height);
 
     Theme(std::string name, std::string iconPath, std::string shader,
-          double opacityExp)
+          double opacityExp, bool applyAfter = false)
         : m_iconPath(iconPath),
           m_postprocessShader(shader),
           m_opacityExp(opacityExp),
+          m_applyAfter(applyAfter),
           m_name(name) {}
 };

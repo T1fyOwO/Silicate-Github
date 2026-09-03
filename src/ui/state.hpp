@@ -56,6 +56,8 @@ struct UIState {
 
     int m_editIndex = 0;
 
+    bool m_syncBothAutoclicker = true;
+
     std::string m_replayName = "";
     std::string m_lastReplayName = "";
 
@@ -147,12 +149,7 @@ struct UIState {
     };
 
     tabby::DropdownState m_autoclickerState = {
-        .options =
-            {
-                "Player 1",
-                "Player 2",
-                "Both",
-            },
+        .options = {"Player 1", "Player 2"},
     };
 
     tabby::DropdownState m_themeState;

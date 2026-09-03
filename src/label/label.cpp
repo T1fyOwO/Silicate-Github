@@ -30,7 +30,7 @@ namespace labels {
         }                                                                   \
     }
 
-static std::string getStringifiedOrbName(RingObject* ring) {
+static std::string_view getStringifiedOrbName(RingObject* ring) {
     switch (ring->m_objectID) {
         case 36:
             return "Yellow";
@@ -253,40 +253,42 @@ LabelManager::LabelManager() {
              {});
     addLabel("touching_orbs", "Touching Orbs",
              [](Label&) {
-                 // TODO: fix this. this makes way too many allocations
-                 PlayerObject* player = PlayLayer::get()->m_player1;
-                 CCArray* touchingRings = player->m_touchingRings;
-
                  std::string ringText = "Touching Orbs: ";
-                 ringText.reserve(64);
+                 ringText.reserve(256);
+                 auto processTouchingRings = [&ringText](PlayerObject* player) {
+                     CCArray* touchingRings = player->m_touchingRings;
 
-                 uint32_t count = touchingRings->count();
+                     uint32_t count = touchingRings->count();
 
-                 std::vector<std::string> strings{};
-                 strings.reserve(16);
+                     bool foundAny = false;
+                     for (uint32_t i = 0; i < count; i++) {
+                         RingObject* ring = static_cast<RingObject*>(
+                             touchingRings->objectAtIndex(i));
 
-                 for (uint32_t i = 0; i < count; i++) {
-                     RingObject* ring = static_cast<RingObject*>(
-                         touchingRings->objectAtIndex(i));
+                         if (!ring->hasBeenActivatedByPlayer(player)) {
+                             foundAny = true;
+                             ringText += getStringifiedOrbName(ring);
 
-                     if (!ring->hasBeenActivatedByPlayer(player)) {
-                         strings.push_back(getStringifiedOrbName(ring));
+                             if (ring->m_objectID == 1594) {
+                                 ringText +=
+                                     fmt::format("({})", ring->m_targetGroupID);
+                             }
 
-                         if (ring->m_objectID == 1594) {
-                             strings.back() +=
-                                 fmt::format("({})", ring->m_targetGroupID);
-                         }
-
-                         if (ring->m_isMultiActivate) {
-                             strings.back() += "*";
+                             if (ring->m_isMultiActivate) {
+                                 ringText += "*";
+                             }
                          }
                      }
-                 }
 
-                 if (strings.empty()) {
-                     ringText += "None";
-                 } else {
-                     ringText += geode::utils::string::join(strings, ", ");
+                     if (!foundAny) {
+                         ringText += "None";
+                     }
+                 };
+
+                 processTouchingRings(PlayLayer::get()->m_player1);
+                 if (PlayLayer::get()->m_gameState.m_isDualMode) {
+                     ringText += " / ";
+                     processTouchingRings(PlayLayer::get()->m_player2);
                  }
 
                  return ringText;

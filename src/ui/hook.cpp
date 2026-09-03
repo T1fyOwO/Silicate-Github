@@ -430,6 +430,8 @@ void ImGuiHookCtx::init(cocos2d::CCEGLView* view) {
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTex);
     m_inputTex = createGlassTexture(m_blurPass.m_width, m_blurPass.m_height);
     m_sceneTex = createGlassTexture(m_blurPass.m_width, m_blurPass.m_height);
+    m_postprocessInputTex =
+        createGlassTexture((GLsizei)m_width, (GLsizei)m_height);
     glBindTexture(GL_TEXTURE_2D, oldTex);
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_blurPass.m_fbo);
@@ -477,6 +479,8 @@ void ImGuiHookCtx::reinitForNewWindow(cocos2d::CCEGLView* view, HDC hdc,
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTex);
     m_inputTex = createGlassTexture(m_blurPass.m_width, m_blurPass.m_height);
     m_sceneTex = createGlassTexture(m_blurPass.m_width, m_blurPass.m_height);
+    m_postprocessInputTex =
+        createGlassTexture((GLsizei)m_width, (GLsizei)m_height);
     glBindTexture(GL_TEXTURE_2D, oldTex);
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_blurPass.m_fbo);
@@ -498,6 +502,9 @@ void ImGuiHookCtx::handleResize(float width, float height) {
 
     if (width <= 0.0f || height <= 0.0f) return;
 
+    const float fullWidth = width;
+    const float fullHeight = height;
+
     width /= BLUR_DOWNSCALING_FACTOR;
     height /= BLUR_DOWNSCALING_FACTOR;
 
@@ -508,12 +515,15 @@ void ImGuiHookCtx::handleResize(float width, float height) {
     m_blurPass.m_height = (unsigned int)height;
     m_blurPass.resize();
 
-    Bot::get()->ui().m_theme->resize(width, height);
+    Bot::get()->ui().m_theme->resize((uint32_t)fullWidth,
+                                     (uint32_t)fullHeight);
 
     GLint oldTex = 0;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTex);
     resizeGlassTexture(m_inputTex, m_blurPass.m_width, m_blurPass.m_height);
     resizeGlassTexture(m_sceneTex, m_blurPass.m_width, m_blurPass.m_height);
+    resizeGlassTexture(m_postprocessInputTex, (GLsizei)fullWidth,
+                       (GLsizei)fullHeight);
     glBindTexture(GL_TEXTURE_2D, oldTex);
 }
 
@@ -554,6 +564,49 @@ void ImGuiHookCtx::preSampleBlur(ImVec4 window, float cornerRadius) {
 
     glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_blurPass.m_width,
                       m_blurPass.m_height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(0, 2, GL_FLOAT, false, 20, 0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, false, 20, (void*)8);
+
+    m_windowPos = window;
+    m_cornerRadius = cornerRadius;
+}
+
+void ImGuiHookCtx::preSamplePostprocess(ImVec4 window, float cornerRadius) {
+    if (!m_inited) return;
+
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &m_oldFbo);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &m_oldProgram);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &m_oldActiveTexture);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &m_oldTex);
+    glActiveTexture(GL_TEXTURE1);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &m_oldTex1);
+    glActiveTexture(GL_TEXTURE0);
+
+    auto& postprocessPass = Bot::get()->ui().m_theme->m_postprocessPass;
+    glViewport(0, 0, (GLsizei)m_width, (GLsizei)m_height);
+    glDisable(GL_SCISSOR_TEST);
+
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, postprocessPass.m_fbo);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, postprocessPass.m_tex, 0);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
+                           GL_TEXTURE_2D, m_postprocessInputTex, 0);
+
+    glReadBuffer(GL_BACK);
+    if (auto renderer = Renderer::get(); renderer->isRecording()) {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, renderer->m_texture.m_old_fbo);
+    } else {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    }
+
+    glDrawBuffer(GL_COLOR_ATTACHMENT1);
+    glBlitFramebuffer(0, 0, (GLsizei)m_width, (GLsizei)m_height, 0, 0,
+                      (GLsizei)m_width, (GLsizei)m_height, GL_COLOR_BUFFER_BIT,
+                      GL_NEAREST);
 
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
@@ -616,6 +669,20 @@ void ImGuiHookCtx::sampleBlurPostprocessToInput() {
     glUniform1f(4, m_time);
 
     glDrawBuffer(GL_COLOR_ATTACHMENT1);
+}
+
+void ImGuiHookCtx::samplePostprocessFullResolution() {
+    if (!m_inited) return;
+
+    glUseProgram(Bot::get()->ui().m_theme->m_postprocessPass.m_program);
+
+    glUniform1i(0, 0);
+    glUniform2f(1, 1.0f / m_width, 1.0f / m_height);
+    glUniform2f(2, 1.6f, 0.0f);
+    glUniform4f(3, m_windowPos.x, m_windowPos.y, m_windowPos.z, m_windowPos.w);
+    glUniform1f(4, m_time);
+
+    glDrawBuffer(GL_COLOR_ATTACHMENT0);
 }
 
 static void configureGlassPass(ImGuiHookCtx& context, GLenum output) {

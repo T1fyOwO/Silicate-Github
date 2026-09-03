@@ -7,36 +7,47 @@
 using namespace geode::prelude;
 
 class Autoclicker {
-    enum class PlayerToggle : int {
-        Player1,
-        Player2,
-        Both,
-    };
-
    private:
-    uint64_t m_lastFrame = UINT64_MAX;
-    bool m_p1Clicked = false;
-    bool m_p2Clicked = false;
+    void updatePlayer(PlayLayer* pl, bool player2);
 
    public:
-    int m_frequency = 1;
-    bool m_performSwifts = false;
+    class PlayerSettings {
+       public:
+        uint32_t m_holdDelay = 1;
+        uint32_t m_releaseDelay = 1;
+        uint32_t m_clicksPerHold = 1;
+
+        bool m_performSwifts = false;
+        bool m_enabled = true;
+
+        void operator()(const PlayerSettings& other) {
+            m_holdDelay = other.m_holdDelay;
+            m_releaseDelay = other.m_releaseDelay;
+            m_clicksPerHold = other.m_clicksPerHold;
+            m_performSwifts = other.m_performSwifts;
+            m_enabled = other.m_enabled;
+        }
+
+       private:
+        uint64_t m_lastFrame = UINT64_MAX;
+        bool m_clicked = false;
+
+        friend class Autoclicker;
+    };
+
+    PlayerSettings m_player1{};
+    PlayerSettings m_player2{};
+
     SLValuePtr<bool> m_enabled = SLValue<bool>::create(
         "autoclicker.enabled", &SLSettings::get()->autoclickerEnabled);
-    PlayerToggle m_player = PlayerToggle::Player1;
 
     void reset() {
-        m_lastFrame = UINT64_MAX;
-        m_p1Clicked = false;
-        m_p2Clicked = false;
+        m_player1.m_lastFrame = UINT64_MAX;
+        m_player2.m_lastFrame = UINT64_MAX;
     }
+
     void update(PlayLayer* pl);
-    bool performPlayer1() {
-        return m_player == PlayerToggle::Player1 ||
-               m_player == PlayerToggle::Both;
-    }
-    bool performPlayer2() {
-        return m_player == PlayerToggle::Player2 ||
-               m_player == PlayerToggle::Both;
-    }
+
+    bool performPlayer1() { return m_player1.m_enabled; }
+    bool performPlayer2() { return m_player2.m_enabled; }
 };

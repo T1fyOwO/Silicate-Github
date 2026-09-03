@@ -61,4 +61,15 @@ void Theme::resize(uint32_t width, uint32_t height) {
     m_postprocessPass.resize();
 }
 
-void Theme::apply() { Bot::get()->ui().m_texture = m_texture; }
+void Theme::apply() {
+    auto& context = ImGuiHookCtx::get();
+    const auto width = (uint32_t)context.m_width;
+    const auto height = (uint32_t)context.m_height;
+    if (m_postprocessPass.m_fbo != 0 &&
+        (m_postprocessPass.m_width != width ||
+         m_postprocessPass.m_height != height)) {
+        resize(width, height);
+    }
+
+    Bot::get()->ui().m_texture = m_texture;
+}

@@ -13,6 +13,7 @@
 #include <Geode/modify/ShaderLayer.hpp>
 #include <asp/fs/fs.hpp>
 #include <iostream>
+#include <optional>
 #include <safetyhook.hpp>
 #include <string>
 #include <thread>
@@ -205,6 +206,27 @@ static CCSize alignedRenderSize(const RendererSettings& settings) {
                   (settings.m_height + ALIGNMENT - 1) & ~(ALIGNMENT - 1));
 }
 
+static std::optional<CCSize> getWindowFramebufferSize() {
+    HDC deviceContext = wglGetCurrentDC();
+    if (!deviceContext) {
+        return std::nullopt;
+    }
+
+    HWND window = WindowFromDC(deviceContext);
+    RECT clientRect{};
+    if (!window || !GetClientRect(window, &clientRect)) {
+        return std::nullopt;
+    }
+
+    const int width = clientRect.right - clientRect.left;
+    const int height = clientRect.bottom - clientRect.top;
+    if (width <= 0 || height <= 0) {
+        return std::nullopt;
+    }
+
+    return CCSize(static_cast<float>(width), static_cast<float>(height));
+}
+
 void Renderer::acquireView() {
     if (m_viewResized) {
         return;
@@ -212,7 +234,12 @@ void Renderer::acquireView() {
 
     CCSize renderSize = alignedRenderSize(m_settings);
 
-    m_windowSize = CCDirector::get()->getOpenGLView()->getFrameSize();
+    auto view = CCDirector::get()->getOpenGLView();
+    m_windowSize = view->getFrameSize();
+    m_windowFramebufferSize =
+        getWindowFramebufferSize().value_or(m_windowSize);
+    m_texture.m_windowWidth = m_windowFramebufferSize.width;
+    m_texture.m_windowHeight = m_windowFramebufferSize.height;
     m_viewResized = true;
     silentChangeSize(renderSize);
 
@@ -221,21 +248,31 @@ void Renderer::acquireView() {
     }
 }
 
-void Renderer::reacquireView() {
+bool Renderer::handleFrameSizeChange(float width, float height) {
     if (!m_viewResized) {
-        return;
+        return false;
     }
 
-    CCSize frameSize = CCDirector::get()->getOpenGLView()->getFrameSize();
-    if (frameSize.equals(m_windowSize)) {
-        return;
+    auto framebufferSize = getWindowFramebufferSize();
+    if (!framebufferSize.has_value()) {
+        return true;
     }
 
-    m_windowSize = frameSize;
-    silentChangeSize(alignedRenderSize(m_settings));
+    if (framebufferSize->equals(m_windowFramebufferSize)) {
+        return true;
+    }
 
-    m_texture.m_windowWidth = m_windowSize.width;
-    m_texture.m_windowHeight = m_windowSize.height;
+    m_windowSize = CCSize(width, height);
+    m_windowFramebufferSize = *framebufferSize;
+    m_texture.m_windowWidth = m_windowFramebufferSize.width;
+    m_texture.m_windowHeight = m_windowFramebufferSize.height;
+
+    geode::log::info("Window fbo changed during rendering: {}x{} "
+                     "(cocos frame {}x{})",
+                     m_windowFramebufferSize.width,
+                     m_windowFramebufferSize.height, m_windowSize.width,
+                     m_windowSize.height);
+    return true;
 }
 
 void Renderer::restoreView() {
@@ -618,8 +655,8 @@ geode::Result<> Renderer::start() {
     this->acquireView();
     resizeShaderLayer(renderSize);
 
-    m_texture.m_windowWidth = m_windowSize.width;
-    m_texture.m_windowHeight = m_windowSize.height;
+    m_texture.m_windowWidth = m_windowFramebufferSize.width;
+    m_texture.m_windowHeight = m_windowFramebufferSize.height;
     m_texture.init(std::move(colorspace));
 
     m_bufferSize = static_cast<size_t>(m_texture.m_colorspace->getBufferSize());

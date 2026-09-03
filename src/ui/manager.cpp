@@ -272,6 +272,57 @@ static std::vector<Theme> s_themes = {
         }
         )",
           2.0),
+    Theme("Phosphor", "title_new_crt.png",
+          R"(#version 130
+        #extension GL_ARB_explicit_attrib_location : require
+        #extension GL_ARB_explicit_uniform_location : require
+
+        in vec2 v_texCoord;
+        out vec4 fragColor;
+
+        layout(location = 0) uniform sampler2D u_texture;
+        layout(location = 1) uniform vec2 u_texelSize;
+        layout(location = 2) uniform vec2 u_direction;
+        layout(location = 3) uniform vec4 u_window;
+        layout(location = 4) uniform float u_time;
+
+        vec4 sampleBlur(vec2 texCoord) {
+            vec4 color = vec4(0.0);
+            vec2 off1 = vec2(1.3846153846) * u_direction * u_texelSize;
+            vec2 off2 = vec2(4.2307692308) * u_direction * u_texelSize;
+            color += texture2D(u_texture, texCoord) * 0.2270270270;
+            color += texture2D(u_texture, texCoord + off1) * 0.3162162162;
+            color += texture2D(u_texture, texCoord - off1) * 0.3162162162;
+            color += texture2D(u_texture, texCoord + off2) * 0.0702702703;
+            color += texture2D(u_texture, texCoord - off2) * 0.0702702703;
+
+            return color;
+        }
+
+        float random(vec2 uv) {
+            return fract(sin(dot(uv.xy, vec2(24.91233, 1123.233))) * 60132.468112);
+        }
+
+        void main() {
+            float scanline = 0.02;
+            float scanline2 = 0.03;
+
+            fragColor = texture2D(u_texture, v_texCoord);
+            vec2 uvScanlines = vec2(v_texCoord.x, v_texCoord.y + u_time * 0.2);
+            vec2 uvScanlines2 = vec2(v_texCoord.x, v_texCoord.y + u_time * 0.05);
+
+            fragColor += sampleBlur(v_texCoord) * 0.45;
+            fragColor *= vec4(0.9, 0.5, 0.2, 1.0);
+
+            fragColor += sin(uvScanlines.y * 800.0) * scanline2 - scanline2;
+            fragColor += sin(uvScanlines2.y * 30.0) * scanline - scanline;
+
+            fragColor += vec4(0.07 * random(uvScanlines));
+
+            // fragColor *= min(1.0, sin(v_texCoord.y * 25) + 0.2);
+        }
+        )",
+          2.0, true),
 };
 
 static uint64_t fnv1aHash(const std::vector<uint8_t>& data) {
@@ -495,6 +546,22 @@ static void preDrawBlurEffect(const ImDrawList*, const ImDrawCmd* cmd) {
         params != nullptr ? params->cornerRadius : 0.0f);
 }
 
+static void preDrawPostprocessEffect(const ImDrawList*, const ImDrawCmd* cmd) {
+    auto pos = ImGui::GetDrawData()->DisplayPos;
+    auto sz = ImGui::GetDrawData()->DisplaySize;
+    const auto* params =
+        static_cast<const BlurEffectParams*>(cmd->UserCallbackData);
+    const ImVec4 rect = params != nullptr
+                            ? params->rect
+                            : ImVec4(cmd->ClipRect.x, cmd->ClipRect.y,
+                                     cmd->ClipRect.z, cmd->ClipRect.w);
+
+    ImGuiHookCtx::get().preSamplePostprocess(
+        ImVec4((rect.x - pos.x) / sz.x, 1.0 - ((rect.w - pos.y) / sz.y),
+               (rect.z - pos.x) / sz.x, 1.0 - ((rect.y - pos.y) / sz.y)),
+        params != nullptr ? params->cornerRadius : 0.0f);
+}
+
 static void drawBlurEffectFirstPass(const ImDrawList*, const ImDrawCmd*) {
     ImGuiHookCtx::get().sampleBlurFirstPass();
 }
@@ -511,6 +578,10 @@ static void drawPostprocessToInput(const ImDrawList*, const ImDrawCmd*) {
     ImGuiHookCtx::get().sampleBlurPostprocessToInput();
 }
 
+static void drawPostprocessFullResolution(const ImDrawList*, const ImDrawCmd*) {
+    ImGuiHookCtx::get().samplePostprocessFullResolution();
+}
+
 static void drawGlassToInput(const ImDrawList*, const ImDrawCmd*) {
     ImGuiHookCtx::get().sampleGlassToInput();
 }
@@ -525,7 +596,8 @@ static void postDrawBlurEffect(const ImDrawList*, const ImDrawCmd*) {
 
 static void renderBlurBg(float rounding = 24.0f, float borderSize = 2.5f,
                          bool useShader = true, float bgOpacity = 0.15f,
-                         bool pp = false, float opacityMultiplier = 1.0f) {
+                         bool pp = false, float opacityMultiplier = 1.0f,
+                         bool ppOnly = false) {
     rounding *= tabby::TabbyGlobalCfg::get().uiScale;
     borderSize *= tabby::TabbyGlobalCfg::get().uiScale;
 
@@ -554,7 +626,10 @@ static void renderBlurBg(float rounding = 24.0f, float borderSize = 2.5f,
     ImGuiHookCtx::get().m_renderData.m_pos =
         cocos2d::CCPoint(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y);
 
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    // An apply-after pass must execute after Tabby's child-window draw lists,
+    // where most widgets live. The foreground draw list is rendered last.
+    ImDrawList* drawList =
+        ppOnly ? ImGui::GetForegroundDrawList() : ImGui::GetWindowDrawList();
 
     cocos2d::CCSize frameSize = cocos2d::CCSize(ImGuiHookCtx::get().m_width,
                                                 ImGuiHookCtx::get().m_height);
@@ -568,23 +643,19 @@ static void renderBlurBg(float rounding = 24.0f, float borderSize = 2.5f,
     s_blurEffectParams.push_back(
         {.rect = ImVec4(origin_pos.x, origin_pos.y, dest_pos.x, dest_pos.y),
          .cornerRadius = innerRounding});
-    drawList->AddCallback(&preDrawBlurEffect, &s_blurEffectParams.back());
+    drawList->AddCallback(
+        ppOnly ? &preDrawPostprocessEffect : &preDrawBlurEffect,
+        &s_blurEffectParams.back());
 
-    float origin_uv_x = origin_pos.x / ImGuiHookCtx::get().m_blurPass.m_width /
-                        ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR;
-    float origin_uv_y = (frameSize.height - origin_pos.y) /
-                        ImGuiHookCtx::get().m_blurPass.m_height /
-                        ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR;
+    float origin_uv_x = origin_pos.x / frameSize.width;
+    float origin_uv_y = (frameSize.height - origin_pos.y) / frameSize.height;
 
-    float dest_uv_x = dest_pos.x / ImGuiHookCtx::get().m_blurPass.m_width /
-                      ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR;
-    float dest_uv_y = (frameSize.height - dest_pos.y) /
-                      ImGuiHookCtx::get().m_blurPass.m_height /
-                      ImGuiHookCtx::BLUR_DOWNSCALING_FACTOR;
+    float dest_uv_x = dest_pos.x / frameSize.width;
+    float dest_uv_y = (frameSize.height - dest_pos.y) / frameSize.height;
 
     const int SAMPLE_COUNT = 8;
 
-    for (int i = 0; i < SAMPLE_COUNT; i++) {
+    for (int i = 0; i < SAMPLE_COUNT && !ppOnly; i++) {
         drawList->AddCallback(&drawBlurEffectFirstPass, nullptr);
         drawList->AddImage(
             ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
@@ -596,8 +667,6 @@ static void renderBlurBg(float rounding = 24.0f, float borderSize = 2.5f,
             ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_inputTex),
             {-1.0, -1.0}, {1.0, 1.0});
 
-        // Keep a moderately blurred layer for visible but never sharp
-        // refraction. The final layer remains more heavily blurred.
         if (i == 1) {
             drawList->AddCallback(&drawBlurSnapshot, nullptr);
             drawList->AddImage(
@@ -607,23 +676,36 @@ static void renderBlurBg(float rounding = 24.0f, float borderSize = 2.5f,
     }
 
     ImTextureID finalTexture;
-    if (pp) {
-        drawList->AddCallback(&drawPostprocessToInput, nullptr);
+
+    if (ppOnly) {
+        drawList->AddCallback(&drawPostprocessFullResolution, nullptr);
         drawList->AddImage(
-            ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
+            ImTextureRef(
+                (ImTextureID)ImGuiHookCtx::get().m_postprocessInputTex),
             {-1.0, -1.0}, {1.0, 1.0});
 
-        drawList->AddCallback(&drawGlassToBlur, nullptr);
-        drawList->AddImage(
-            ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_inputTex),
-            {-1.0, -1.0}, {1.0, 1.0});
-        finalTexture = (ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex;
+        finalTexture =
+            (ImTextureID)Bot::get()->ui().m_theme->m_postprocessPass.m_tex;
     } else {
-        drawList->AddCallback(&drawGlassToInput, nullptr);
-        drawList->AddImage(
-            ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
-            {-1.0, -1.0}, {1.0, 1.0});
-        finalTexture = (ImTextureID)ImGuiHookCtx::get().m_inputTex;
+        if (pp) {
+            drawList->AddCallback(&drawPostprocessToInput, nullptr);
+            drawList->AddImage(
+                ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
+                {-1.0, -1.0}, {1.0, 1.0});
+
+            drawList->AddCallback(&drawGlassToBlur, nullptr);
+            drawList->AddImage(
+                ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_inputTex),
+                {-1.0, -1.0}, {1.0, 1.0});
+
+            finalTexture = (ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex;
+        } else {
+            drawList->AddCallback(&drawGlassToInput, nullptr);
+            drawList->AddImage(
+                ImTextureRef((ImTextureID)ImGuiHookCtx::get().m_blurPass.m_tex),
+                {-1.0, -1.0}, {1.0, 1.0});
+            finalTexture = (ImTextureID)ImGuiHookCtx::get().m_inputTex;
+        }
     }
 
     drawList->AddCallback(&postDrawBlurEffect, nullptr);
@@ -983,7 +1065,8 @@ void UIManager::draw() {
         applyNewStyle();
 
         if (m_state.m_useShader->inner()) {
-            renderBlurBg(24.0f, 2.5f, true, m_state.m_opacity->inner(), true);
+            renderBlurBg(24.0f, 2.5f, true, m_state.m_opacity->inner(),
+                         !m_theme->m_applyAfter);
         } else {
             ImGui::GetWindowDrawList()->AddRectFilled(
                 ImGui::GetWindowPos(),
@@ -1507,23 +1590,61 @@ void UIManager::draw() {
                 settingsCard(
                     "AutoclickerCard", "Autoclicker", &autoclickerEnabled,
                     m_medium, [&]() {
-                        tabby::drag("Interval##Autoclicker",
-                                    Bot::get()->autoclicker().m_frequency, 0,
-                                    std::numeric_limits<int>::max(), 1.0f,
-                                    "{} Frame(s)");
-                        tabby::checkbox(
-                            "Swift Clicks",
-                            Bot::get()->autoclicker().m_performSwifts);
-                        slui::tooltip(
-                            "Releases each click on the same frame instead of "
-                            "alternating between a press and release every "
-                            "interval.",
-                            tooltipShaderFn);
-                        tabby::dropdown(
-                            "Player##Autoclicker", m_state.m_autoclickerState,
-                            *reinterpret_cast<int*>(
-                                &Bot::get()->autoclicker().m_player),
-                            popupShaderFn);
+                        tabby::checkbox("Sync Both Players",
+                                        m_state.m_syncBothAutoclicker);
+
+                        if (!m_state.m_syncBothAutoclicker) {
+                            tabby::dropdown(
+                                "Player##Autoclicker",
+                                m_state.m_autoclickerState,
+                                m_state.m_autoclickerState.selectedIndex,
+                                popupShaderFn);
+                        }
+
+                        Autoclicker::PlayerSettings& s =
+                            (m_state.m_autoclickerState.selectedIndex == 0 ||
+                             m_state.m_syncBothAutoclicker)
+                                ? bot->autoclicker().m_player1
+                                : bot->autoclicker().m_player2;
+
+                        {
+                            ScopedInset is;
+
+                            tabby::checkbox("Enabled##Autoclickerplayer",
+                                            s.m_enabled);
+
+                            tabby::drag("Hold Time##Autoclicker", s.m_holdDelay,
+                                        1u,
+                                        std::numeric_limits<uint32_t>::max(),
+                                        1.0f, "{} Tick(s)");
+
+                            tabby::drag("Release Time##Autoclicker",
+                                        s.m_releaseDelay, 1u,
+                                        std::numeric_limits<uint32_t>::max(),
+                                        1.0f, "{} Tick(s)");
+
+                            tabby::checkbox("Swift Clicks", s.m_performSwifts);
+                            slui::tooltip(
+                                "Releases each click on the same frame instead "
+                                "of "
+                                "alternating between a press and release every "
+                                "interval.",
+                                tooltipShaderFn);
+
+                            tabby::drag("Clicks Per Hold##Autoclicker",
+                                        s.m_clicksPerHold, 1u,
+                                        std::numeric_limits<uint32_t>::max(),
+                                        1.0f, "{} Click(s)");
+                            slui::tooltip(
+                                "How many clicks to execute per hold action - "
+                                "this will add an additional swift click on "
+                                "the hold frame for each click above 1",
+                                tooltipShaderFn);
+
+                            if (m_state.m_syncBothAutoclicker) {
+                                bot->autoclicker().m_player2(s);
+                            }
+                        }
                     });
 
                 settingsCard("OtherCard", "Other", nullptr, m_medium, [&]() {
@@ -2767,6 +2888,11 @@ void UIManager::draw() {
             renderBlurBg(16.0f, 1.5f, m_state.m_useShader->inner(), 0.0, false,
                          0.45f);
         });
+
+        if (m_theme->m_applyAfter) {
+            renderBlurBg(24.0f, 2.5f, true, m_state.m_opacity->inner(), true,
+                         1.0f, true);
+        }
     });
 
     ImGui::PopStyleVar();

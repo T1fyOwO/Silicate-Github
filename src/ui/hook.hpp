@@ -34,6 +34,7 @@ class ImGuiHookCtx {
     void* m_glfwWindow = nullptr;
     GLuint m_inputTex = 0;
     GLuint m_sceneTex = 0;
+    GLuint m_postprocessInputTex = 0;
     GLint m_oldFbo;
     GLint m_oldProgram;
     GLint m_oldTex;
@@ -65,10 +66,12 @@ class ImGuiHookCtx {
     void reinitForNewWindow(cocos2d::CCEGLView* view, HDC hdc, HWND hWnd);
 
     void preSampleBlur(ImVec4 windowPos, float cornerRadius);
+    void preSamplePostprocess(ImVec4 windowPos, float cornerRadius);
     void sampleBlurFirstPass();
     void sampleBlurSecondPass();
     void sampleBlurSnapshot();
     void sampleBlurPostprocessToInput();
+    void samplePostprocessFullResolution();
     void sampleGlassToInput();
     void sampleGlassToBlur();
 

@@ -8,7 +8,10 @@ using namespace geode::prelude;
 
 struct SLCCEGLView : Modify<SLCCEGLView, CCEGLView> {
     void setFrameSize(float width, float height) {
+        if (Renderer::get()->handleFrameSizeChange(width, height)) {
+            return;
+        }
+
         CCEGLView::setFrameSize(width, height);
-        Renderer::get()->reacquireView();
     }
 };

@@ -120,7 +120,7 @@ class Renderer {
     geode::Result<> stop();
 
     void acquireView();
-    void reacquireView();
+    bool handleFrameSizeChange(float width, float height);
     void restoreView();
     void withOriginalView(const std::function<void()>& callback);
 
@@ -283,6 +283,7 @@ class Renderer {
     int m_alignedHeight = 0;
 
     cocos2d::CCSize m_windowSize;
+    cocos2d::CCSize m_windowFramebufferSize;
     bool m_viewResized = false;
 
     bool m_ffmpegLoaded = false;

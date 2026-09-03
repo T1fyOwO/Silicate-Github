@@ -3,66 +3,63 @@
 #include "bot/bot.hpp"
 #include "bot/updater.hpp"
 
-void Autoclicker::update(PlayLayer* pl) {
+void Autoclicker::updatePlayer(PlayLayer* pl, bool player2) {
+    PlayerSettings& s = player2 ? m_player2 : m_player1;
+
     if (!pl) {
-        m_p1Clicked = false;
-        m_p2Clicked = false;
+        s.m_clicked = false;
         return;
     }
 
-    if (!m_enabled->inner()) {
-        if (m_p1Clicked) {
-            pl->queueButton(1, false, false, 0.0);
-            m_p1Clicked = false;
+    if (!s.m_enabled || !m_enabled->inner()) {
+        if (s.m_clicked) {
+            pl->queueButton(1, false, player2, 0.0);
+            s.m_clicked = false;
         }
-        if (m_p2Clicked) {
-            pl->queueButton(1, false, true, 0.0);
-            m_p2Clicked = false;
-        }
+
         return;
     }
 
     auto bot = Bot::get();
-    auto frame = bot->updater().getFrame();
-
-    if (frame == m_lastFrame) {
-        return;
-    }
-
     if (!bot->isRecording()) {
         return;
     }
 
-    if ((frame >= m_lastFrame + m_frequency) || m_lastFrame == UINT64_MAX) {
-        m_lastFrame = frame;
-        if (performPlayer1()) {
-            if (!m_p1Clicked) {
-                pl->queueButton(1, true, false, 0.0);
-                m_p1Clicked = true;
-            } else if (m_p1Clicked) {
-                m_p1Clicked = false;
-                pl->queueButton(1, false, false, 0.0);
+    const uint64_t tick = bot->updater().getFrame();
+    if (tick == s.m_lastFrame) {
+        return;
+    }
+
+    uint64_t nextEventTick =
+        s.m_lastFrame + (s.m_clicked ? s.m_holdDelay : s.m_releaseDelay);
+
+    if (tick >= nextEventTick || s.m_lastFrame == UINT64_MAX) {
+        s.m_lastFrame = tick;
+
+        if (!s.m_clicked) {
+            pl->queueButton(1, true, player2, 0.0);
+
+            for (size_t i = 0; i < s.m_clicksPerHold - 1; i++) {
+                pl->queueButton(1, false, player2, 0.0);
+                pl->queueButton(1, true, player2, 0.0);
             }
 
-            if (m_performSwifts) {
-                m_p1Clicked = false;
-                pl->queueButton(1, false, false, 0.0);
-            }
+            s.m_clicked = true;
+        } else {
+            pl->queueButton(1, false, player2, 0.0);
+            s.m_clicked = false;
+
+            return;
         }
 
-        if (performPlayer2()) {
-            if (!m_p2Clicked) {
-                pl->queueButton(1, true, true, 0.0);
-                m_p2Clicked = true;
-            } else if (m_p2Clicked) {
-                m_p2Clicked = false;
-                pl->queueButton(1, false, true, 0.0);
-            }
-
-            if (m_performSwifts) {
-                m_p2Clicked = false;
-                pl->queueButton(1, false, true, 0.0);
-            }
+        if (s.m_performSwifts && s.m_clicked) {
+            pl->queueButton(1, false, player2, 0.0);
+            s.m_clicked = false;
         }
     }
+}
+
+void Autoclicker::update(PlayLayer* pl) {
+    updatePlayer(pl, false);
+    updatePlayer(pl, true);
 }
