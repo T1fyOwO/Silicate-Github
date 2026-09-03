@@ -1,5 +1,52 @@
 # Silicate Changelog
 
+## 1.1.0
+* UI colors and sizes refreshed
+* Assist and render UI reworked
+  * Now related settings are grouped
+* Some features now have tooltips explaining what they do
+* Improved the hitbox trail algorithm to now properly deduplicate rendering based on pixels not on cocos2d points
+* Added new `%difficulty%` renderer tag
+* Removed ability to change Lock Delta mode (now it's always Accuracy)
+* Keybind UI reworked
+* Confirmation modals for overwriting replays and switching to Record mode mid level
+* Added repeat frequency and hold delay settings for keybinds
+* Added way to disable confirmation modals for overwriting replays
+* Repeatedly using keybinds via holding and clicking your mouse does not stop the keybinds being repeated
+* Redesigned disabled bot screen
+* Fixed frame advance applying on the level load screen and not after the level actually loads
+* Added confirmation modal to disabling overwriting replay confirmation modal
+* Fixed hitboxes being wrong when rotating camera
+* Slightly optimized hitboxes
+* Reworked backwards stepping
+  * Going backward now shows a ghost player
+  * You may go forward / backward with your frame advance keybinds to move the trail back and forth
+  * You may cancel the backstep by moving forward enough
+  * You may confirm the backstep early by pressing your toggle frame advance button
+  * The backstep is automatically confirmed after some time, and the save state at that frame is loaded
+* Fixed circle hitboxes properly scaling when zooming in
+* Fixed compatibility with Zoooom! mod and hitbox trail
+* Added error modals for renderer failures and disabling bot when in level
+* Made trajectory a tiny bit faster
+* Fixed inconsistent randomness with teleport portals (aka it always just being the first portal that gets triggered lol)
+* Made shake trigger randomness more consistent
+* Added a warning modal to also enable Lock Delta if trying to enable backwards stepping without it
+* Added a few checks to the renderer to disallow using invalid values
+* Added a warning modal when disabling Lock Delta
+* Renderer now properly scales background for weird aspect ratios
+* Edit tab now doesn't draw items outside of view, so editing massive replays is lag free
+* CPS is now saved between attempts with checkpoints
+* Y velocity label now reacts to Velocity Unrounding having soft toggle on/off
+* Downloading FFmpeg now also uses a more secure hash to verify file integrity
+* Silicate now soft-toggles Superb Input Precision off
+* Reworked autoclicker
+  * Now settings apply per-player (there's an option to sync between both players)
+  * Separated hold and release delays
+  * Added option to perform multiple clicks per tick
+* Fixed a few memory leaks and crashes
+* Added a new theme
+* Added something else... do not boop the cat.
+
 ## 1.0.2
 * Fixed issues with replays not saving TPS properly sometimes
 * Fixed rotating objects in editor not immediately updating the hitboxes
