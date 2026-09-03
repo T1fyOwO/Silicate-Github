@@ -399,8 +399,8 @@ void LabelManager::update(bool forceDisable) {
         int anchorIndex = std::clamp(static_cast<int>(label.m_config.m_anchor),
                                      0, static_cast<int>(heights.size()) - 1);
 
-        label.update(forceDisable || !this->m_globalEnabled, m_requiresRefresh,
-                     heights[anchorIndex]);
+        label.update(forceDisable || !m_globalEnabled->inner(),
+                     m_requiresRefresh, heights[anchorIndex]);
     }
 
     m_requiresRefresh = false;

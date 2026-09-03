@@ -66,6 +66,7 @@ class SLSettings {
     uint32_t stepsToSave = 120;
 
     bool confirmSaveOverwrite = true;
+    bool labelsEnabled = true;
 
     std::array<float, 4> layoutBgColor = {0.2828, 0.4901, 1.0, 1.0};
     std::array<float, 4> layoutGroundColor = {0.2828, 0.4901, 1.0, 1.0};
@@ -141,7 +142,9 @@ class SLSettings {
             Hazard,
             Passable,
             Interactable,
-            InteractableActive
+            InteractableActive,
+
+            PlayerDead
         };
 
         struct HBState {
@@ -161,6 +164,7 @@ class SLSettings {
             {Type::Passable, {true, 0.0, {0.0, 1.0, 1.0, 1.0}}},
             {Type::Interactable, {true, 0.0, {1.0, 1.0, 0.0, 1.0}}},
             {Type::InteractableActive, {true, 0.0, {0.2, 1.0, 0.0, 1.0}}},
+            {Type::PlayerDead, {true, 0.0, {1.0, 0.4, 0.0, 1.0}}},
         };
     } hitboxes;
 
@@ -222,6 +226,7 @@ struct glz::meta<SLSettings> {
         "layout_use_bg", &T::useRegularBg,
 
         "show_labels_while_rendering", &T::showLabelsWhileRendering,
+        "labels_enabled", &T::labelsEnabled,
 
         "alternate_hook", &T::useAlternateHook
     );

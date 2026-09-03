@@ -121,6 +121,8 @@ class Renderer {
 
     void acquireView();
     bool handleFrameSizeChange(float width, float height);
+    bool handleFramebufferSizeChange(int width, int height);
+    bool handleWindowSizeChange();
     void restoreView();
     void withOriginalView(const std::function<void()>& callback);
 
@@ -198,6 +200,7 @@ class Renderer {
     void harvestCompleted();
     void flushPending();
     void enqueueFrame(uint8_t* data, int64_t pts);
+    void updateWindowFramebufferSize(cocos2d::CCSize size);
 
     // AVBufferRef* m_hwDeviceCtx = nullptr;
     // AVBufferRef* m_hwFramesCtx = nullptr;
@@ -284,6 +287,7 @@ class Renderer {
 
     cocos2d::CCSize m_windowSize;
     cocos2d::CCSize m_windowFramebufferSize;
+    cocos2d::CCSize m_viewToFramebufferScale{1.0f, 1.0f};
     bool m_viewResized = false;
 
     bool m_ffmpegLoaded = false;

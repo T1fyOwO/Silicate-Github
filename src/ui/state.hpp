@@ -166,21 +166,22 @@ struct UIState {
     using HitboxType = SLSettings::HitboxSettings::Type;
     tabby::DropdownState m_hitboxState = {
         .options = {"Player", "Inner Player", "Rotated Player",
-                    "Player (Circle)",
+                    "Player (Circle)", "Player (Dead)",
 
                     "Solid", "Hazard", "Passable", "Interactable",
                     "Interactable (Active)"},
     };
-    int m_hitboxCategories[9] = {HitboxType::Player,
-                                 HitboxType::PlayerInner,
-                                 HitboxType::PlayerRotated,
-                                 HitboxType::PlayerCircle,
+    int m_hitboxCategories[10] = {HitboxType::Player,
+                                  HitboxType::PlayerInner,
+                                  HitboxType::PlayerRotated,
+                                  HitboxType::PlayerCircle,
+                                  HitboxType::PlayerDead,
 
-                                 HitboxType::Solid,
-                                 HitboxType::Hazard,
-                                 HitboxType::Passable,
-                                 HitboxType::Interactable,
-                                 HitboxType::InteractableActive};
+                                  HitboxType::Solid,
+                                  HitboxType::Hazard,
+                                  HitboxType::Passable,
+                                  HitboxType::Interactable,
+                                  HitboxType::InteractableActive};
 
     tabby::ColorState m_hitboxColorState;
     tabby::ColorState m_groundColorState;

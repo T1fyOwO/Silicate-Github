@@ -228,16 +228,29 @@ static std::optional<CCSize> getWindowFramebufferSize() {
 }
 
 void Renderer::acquireView() {
+    CCSize renderSize = alignedRenderSize(m_settings);
+
     if (m_viewResized) {
+        silentChangeSize(renderSize);
+
+        auto gjbgl = GJBaseGameLayer::get();
+        if (m_recording && gjbgl && gjbgl->m_shaderLayer) {
+            auto shaderLayer = gjbgl->m_shaderLayer;
+            if (!shaderLayer->m_screenSize.equals(renderSize) ||
+                !shaderLayer->m_targetTextureSize.equals(renderSize)) {
+                resizeShaderLayer(renderSize);
+            }
+        }
         return;
     }
-
-    CCSize renderSize = alignedRenderSize(m_settings);
 
     auto view = CCDirector::get()->getOpenGLView();
     m_windowSize = view->getFrameSize();
     m_windowFramebufferSize =
         getWindowFramebufferSize().value_or(m_windowSize);
+    m_viewToFramebufferScale = CCSize(
+        m_windowSize.width / m_windowFramebufferSize.width,
+        m_windowSize.height / m_windowFramebufferSize.height);
     m_texture.m_windowWidth = m_windowFramebufferSize.width;
     m_texture.m_windowHeight = m_windowFramebufferSize.height;
     m_viewResized = true;
@@ -248,7 +261,26 @@ void Renderer::acquireView() {
     }
 }
 
-bool Renderer::handleFrameSizeChange(float width, float height) {
+void Renderer::updateWindowFramebufferSize(CCSize size) {
+    if (size.width <= 0.0f || size.height <= 0.0f ||
+        size.equals(m_windowFramebufferSize)) {
+        return;
+    }
+
+    m_windowFramebufferSize = size;
+    m_windowSize = CCSize(size.width * m_viewToFramebufferScale.width,
+                          size.height * m_viewToFramebufferScale.height);
+    m_texture.m_windowWidth = size.width;
+    m_texture.m_windowHeight = size.height;
+
+    geode::log::info("Window fbo changed during rendering: {}x{} "
+                     "(restore frame {}x{})",
+                     m_windowFramebufferSize.width,
+                     m_windowFramebufferSize.height, m_windowSize.width,
+                     m_windowSize.height);
+}
+
+bool Renderer::handleFrameSizeChange(float, float) {
     if (!m_viewResized) {
         return false;
     }
@@ -258,20 +290,28 @@ bool Renderer::handleFrameSizeChange(float width, float height) {
         return true;
     }
 
-    if (framebufferSize->equals(m_windowFramebufferSize)) {
-        return true;
+    this->updateWindowFramebufferSize(*framebufferSize);
+    return true;
+}
+
+bool Renderer::handleFramebufferSizeChange(int width, int height) {
+    if (!m_viewResized) {
+        return false;
     }
 
-    m_windowSize = CCSize(width, height);
-    m_windowFramebufferSize = *framebufferSize;
-    m_texture.m_windowWidth = m_windowFramebufferSize.width;
-    m_texture.m_windowHeight = m_windowFramebufferSize.height;
+    this->updateWindowFramebufferSize(
+        CCSize(static_cast<float>(width), static_cast<float>(height)));
+    return true;
+}
 
-    geode::log::info("Window fbo changed during rendering: {}x{} "
-                     "(cocos frame {}x{})",
-                     m_windowFramebufferSize.width,
-                     m_windowFramebufferSize.height, m_windowSize.width,
-                     m_windowSize.height);
+bool Renderer::handleWindowSizeChange() {
+    if (!m_viewResized) {
+        return false;
+    }
+
+    if (auto framebufferSize = getWindowFramebufferSize()) {
+        this->updateWindowFramebufferSize(*framebufferSize);
+    }
     return true;
 }
 

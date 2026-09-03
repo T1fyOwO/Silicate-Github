@@ -2683,10 +2683,11 @@ void UIManager::draw() {
                 tabby::text("Labels", m_medium);
 
                 tabby::checkbox("Display Labels",
-                                Bot::get()->labels().m_globalEnabled);
+                                Bot::get()->labels().m_globalEnabled->inner());
 
                 animated(
-                    "GlobalLabelOptions", Bot::get()->labels().m_globalEnabled,
+                    "GlobalLabelOptions",
+                    Bot::get()->labels().m_globalEnabled->inner(),
                     [&]() {
                         tabby::dropdown("Label##Selector", m_state.m_labelState,
                                         m_state.m_labelState.selectedIndex,

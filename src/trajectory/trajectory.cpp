@@ -2,6 +2,7 @@
 
 #include <array>
 
+#include "assist/autoclicker.hpp"
 #include "bot/bot.hpp"
 #include "bot/updater.hpp"
 #include "ccTypes.h"
@@ -166,10 +167,23 @@ TrajectoryPlayerData Trajectory::runPrediction(GJBaseGameLayer* pl,
     std::array<PlayerObject*, 2> players = {player, other};
     int count = (both && pl->m_gameState.m_isDualMode) ? 2 : 1;
 
+    auto& ac = Bot::get()->autoclicker();
+    bool acEnabled = ac.m_enabled->inner();
+    bool isP2 = player == m_fakePlayer2;
+    Autoclicker::PlayerSettings state = isP2 ? ac.m_player2 : ac.m_player1;
+
     for (int i = 0; i < count; i++) {
         PlayerObject* plr = players[i];
         CCPoint position = plr->getPosition();
-        if (Bot::get()->isRecording()) {
+        if (Bot::get()->isRecording() && acEnabled) {
+            if (state.isClicking()) {
+                plr->pushButton(PlayerButton::Jump);
+            } else {
+                plr->releaseButton(PlayerButton::Jump);
+            }
+        }
+
+        if (Bot::get()->isRecording() && !acEnabled) {
             switch (mode & Trajectory::CLICK_MASK) {
                 case TrajectoryMode::Hold: {
                     plr->pushButton(PlayerButton::Jump);
@@ -225,11 +239,11 @@ TrajectoryPlayerData Trajectory::runPrediction(GJBaseGameLayer* pl,
     const std::vector<slc::Action>& inputs =
         Bot::get()->replaySystem().m_actionAtom.m_actions;
 
+
     int predCount = 0;
     for (int i = 0; i < iterations && i <= config.m_maxLength; i++) {
+        uint64_t frame = Bot::get()->updater().getFrame() + i;
         if (Bot::get()->isPlaying()) {
-            uint64_t frame = Bot::get()->updater().getFrame() + i;
-
             while (trajectoryInputIndex < (int)inputs.size() &&
                    inputs[trajectoryInputIndex].m_frame <= frame) {
                 const auto& input = inputs[trajectoryInputIndex];
@@ -256,6 +270,11 @@ TrajectoryPlayerData Trajectory::runPrediction(GJBaseGameLayer* pl,
                     break;
                 }
             }
+        }
+
+        if (Bot::get()->isRecording() &&
+            ac.m_enabled->inner()) {
+            ac.update(player, state, isP2, frame, false);
         }
 
         if (!breakIterationP1) {

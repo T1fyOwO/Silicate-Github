@@ -7,6 +7,9 @@
 #include <string>
 #include <vector>
 
+#include "settings/settings.hpp"
+#include "shared/value/value.hpp"
+
 using namespace cocos2d;
 
 namespace labels {
@@ -95,7 +98,8 @@ class LabelManager {
    public:
     std::vector<Label> m_labels;
     bool m_requiresRefresh = false;
-    bool m_globalEnabled = true;
+    SLValuePtr<bool> m_globalEnabled = SLValue<bool>::create(
+        "labels.enabled", &SLSettings::get()->labelsEnabled);
 
     template <typename F>
         requires std::is_invocable_r_v<std::string, F, Label&>

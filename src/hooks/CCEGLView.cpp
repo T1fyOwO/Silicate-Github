@@ -14,4 +14,21 @@ struct SLCCEGLView : Modify<SLCCEGLView, CCEGLView> {
 
         CCEGLView::setFrameSize(width, height);
     }
+
+    void onGLFWframebuffersize(GLFWwindow* window, int width, int height) {
+        if (Renderer::get()->handleFramebufferSizeChange(width, height)) {
+            return;
+        }
+
+        CCEGLView::onGLFWframebuffersize(window, width, height);
+    }
+
+    void onGLFWWindowSizeFunCallback(GLFWwindow* window, int width,
+                                     int height) {
+        if (Renderer::get()->handleWindowSizeChange()) {
+            return;
+        }
+
+        CCEGLView::onGLFWWindowSizeFunCallback(window, width, height);
+    }
 };

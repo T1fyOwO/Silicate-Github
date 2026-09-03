@@ -8,7 +8,7 @@ using namespace geode::prelude;
 
 class Autoclicker {
    private:
-    void updatePlayer(PlayLayer* pl, bool player2);
+       void update(PlayLayer* pl, bool player2);
 
    public:
     class PlayerSettings {
@@ -27,6 +27,8 @@ class Autoclicker {
             m_performSwifts = other.m_performSwifts;
             m_enabled = other.m_enabled;
         }
+
+        bool isClicking() const { return m_clicked; }
 
        private:
         uint64_t m_lastFrame = UINT64_MAX;
@@ -47,6 +49,7 @@ class Autoclicker {
     }
 
     void update(PlayLayer* pl);
+    void update(PlayerObject* player, PlayerSettings& state, bool isP2, uint64_t tick, bool queueButtons = true);
 
     bool performPlayer1() { return m_player1.m_enabled; }
     bool performPlayer2() { return m_player2.m_enabled; }
