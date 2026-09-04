@@ -465,7 +465,7 @@ CCLabelBMFont* Label::get() {
     std::string cocosLabelID =
         fmt::format("{}/label.{}", geode::Mod::get()->getID(), m_id);
     if (pl) {
-        if (auto l = pl->getChildByID(cocosLabelID); l) {
+        if (auto l = pl->m_uiLayer->getChildByID(cocosLabelID); l) {
             return dynamic_cast<CCLabelBMFont*>(l);
         }
 
@@ -484,7 +484,7 @@ CCLabelBMFont* Label::get() {
         label->setScale(m_config.m_scale);
         // this->calculatePosition(0, label);
 
-        PlayLayer::get()->addChild(label, 100000);
+        pl->m_uiLayer->addChild(label, 100000);
     }
 
     return label;
@@ -500,13 +500,15 @@ void Label::calculatePosition(float& currentHeight, CCLabelBMFont* label) {
     switch (m_config.m_anchor) {
         case LabelAnchor::TopLeft:
             m_position = cocos2d::CCPoint(
-                spacing, pl->getContentSize().height - spacing - currentHeight);
+                spacing, pl->m_uiLayer->getContentSize().height - spacing -
+                             currentHeight);
             m_cocosAnchor = cocos2d::CCPoint(0.0f, 1.0f);
             break;
         case LabelAnchor::TopRight:
             m_position = cocos2d::CCPoint(
-                pl->getContentSize().width - spacing,
-                pl->getContentSize().height - spacing - currentHeight);
+                pl->m_uiLayer->getContentSize().width - spacing,
+                pl->m_uiLayer->getContentSize().height - spacing -
+                    currentHeight);
             m_cocosAnchor = cocos2d::CCPoint(1.0f, 1.0f);
             break;
         case LabelAnchor::BottomLeft:
@@ -514,8 +516,9 @@ void Label::calculatePosition(float& currentHeight, CCLabelBMFont* label) {
             m_cocosAnchor = cocos2d::CCPoint(0.0f, 0.0f);
             break;
         case LabelAnchor::BottomRight:
-            m_position = cocos2d::CCPoint(pl->getContentSize().width - spacing,
-                                          currentHeight + spacing);
+            m_position = cocos2d::CCPoint(
+                pl->m_uiLayer->getContentSize().width - spacing,
+                currentHeight + spacing);
             m_cocosAnchor = cocos2d::CCPoint(1.0f, 0.0f);
             break;
     }
