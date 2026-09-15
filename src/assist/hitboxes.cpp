@@ -284,8 +284,7 @@ void Hitboxes::raiseGameUI(GJBaseGameLayer* pl) {
 
 void Hitboxes::raiseAbove(cocos2d::CCNode* node) {
     if (!m_initialized || !m_container || !node) return;
-
-    node->setZOrder(m_container->getZOrder() + 1);
+    node->setZOrder(m_container->getZOrder() + 1 + node->getZOrder());
 }
 
 static void iterateObjects(GJBaseGameLayer* pl,

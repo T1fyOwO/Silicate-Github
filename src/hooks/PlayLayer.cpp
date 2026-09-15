@@ -740,10 +740,12 @@ struct SLPlayLayer : Modify<SLPlayLayer, PlayLayer> {
 
         PlayLayer::showCompleteText();
 
-        std::unordered_set<CCNode*> after;
-        this->collectChildren(after);
+        this->sortAllChildren();
+        auto children = this->getChildren();
+        if (!children) return;
 
-        for (CCNode* child : after) {
+        for (unsigned int i = 0; i < children->count(); ++i) {
+            auto child = static_cast<CCNode*>(children->objectAtIndex(i));
             if (!before.contains(child)) {
                 bot->hitboxes().raiseAbove(child);
             }
