@@ -51,6 +51,7 @@
     "blueblock6.transparent_checkpoints": "1.0.7"
   },
   "dependencies": {
-    "geode.node-ids": ">=1.22.0"
+    "geode.node-ids": ">=1.22.0",
+    "peony.calcifer": ">=1.0.0"
   }
 }

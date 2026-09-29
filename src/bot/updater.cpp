@@ -20,6 +20,7 @@
 #include "render/renderer.hpp"
 #include "replay/system.hpp"
 #include "trajectory/trajectory.hpp"
+#include "util/macros.hpp"
 #include "util/midhook.hpp"
 #include "util/profile.hpp"
 
@@ -566,175 +567,6 @@ $execute {
                                                      ACTIONMGR_UPDATE_OFFSET);
 }
 
-static void backstepUpdateMidhook(SafetyHookContext&) {
-    Bot* bot = Bot::get();
-    if (bot->updater().m_onlyRefresh) return;
-
-    PlayLayer* pl = PlayLayer::get();
-    if (!pl) return;
-
-    if (!pl->m_playerDied && bot->updater().m_backwardsStepping->inner() &&
-        !Renderer::get()->isRecording()) {
-        CheckpointObject* checkpoint = pl->createCheckpoint();
-        checkpoint->retain();
-        bot->practiceFix().saveState(
-            checkpoint, Bot::get()->updater().m_frameOnLastAttempt);
-    }
-}
-
-static void frameUpdateMidhook(SafetyHookContext&) {
-    SCOPED_TIMER("frameUpdate")
-
-    auto bot = Bot::get();
-    if (!bot->isEnabled()) return;
-
-    auto pl = GJBaseGameLayer::get();
-    if (!pl) return;
-
-    if (pl->m_resumeTimer > 0) {
-        return;
-    }
-
-    // geode::log::info("le xmm13: {}", ctx.xmm13.f64[0]);
-
-    PlayLayer* pll = PlayLayer::get();
-    auto& updater = bot->updater();
-
-    if (!pl->m_playerDied) {
-        if (pll) {
-            updater.incrementFrame();
-            updater.m_timewarpTime +=
-                updater.getPhysicsDt() * pll->m_gameState.m_timeWarp;
-        }
-
-        bot->cps().update();
-        bot->hitboxes().saveToTrail(pl);
-
-        auto trajectory = bot->trajectory().unsafeInner();
-        if (trajectory && pll && updater.m_fullGamePrediction->inner() &&
-            updater.m_preventDeath->inner()) {
-            using Mode = SLSettings::TrajectorySettings::Mode;
-
-            {
-                int mode = Mode::Player1;
-                mode |=
-                    pl->m_player1->m_jumpBuffered ? Mode::Hold : Mode::Release;
-                auto pred = trajectory->simulate(
-                    pl, true, mode, false,
-                    {.m_bypassConfig = true, .m_maxLength = 3});
-                if (pred.score <= 3) {
-                    bot->updater().setPaused(true);
-                    // bot->updater().breakLoop();
-                }
-
-                if (bot->updater().m_autoFlipOnDeath->inner()) {
-                    pl->queueButton(1, !pl->m_player1->m_jumpBuffered, false,
-                                    0.0);
-                    bot->updater().setPaused(false);
-                }
-            }
-
-            if (pl->m_gameState.m_isDualMode) {
-                int mode = Mode::Player2;
-                mode |=
-                    pl->m_player2->m_jumpBuffered ? Mode::Hold : Mode::Release;
-                auto pred = trajectory->simulate(
-                    pl, false, mode, false,
-                    {.m_bypassConfig = true, .m_maxLength = 3});
-                if (pred.score <= 3) {
-                    bot->updater().setPaused(true);
-                    // bot->updater().breakLoop();
-                }
-
-                if (bot->updater().m_autoFlipOnDeath->inner()) {
-                    pl->queueButton(1, !pl->m_player2->m_jumpBuffered, true,
-                                    0.0);
-                    bot->updater().setPaused(false);
-                }
-            }
-        }
-    }
-
-    if (pll) {
-        bot->autoclicker().update(pll);
-    }
-    // bot->updater().runFrozenTick();
-}
-
-static void physDtMidhook(SafetyHookContext& ctx) {
-    auto pl = GJBaseGameLayer::get();
-    if (!pl) return;
-
-    auto bot = Bot::get();
-    if (!bot->isEnabled()) return;
-    if (bot->updater().m_onlyRefresh) return;
-
-    ctx.xmm1.f64[0] *= bot->updater().m_tps->inner() / 60.0;
-    ctx.rip += 0x08;
-}
-
-// static void physStepCountMidhook(SafetyHookContext& ctx) {
-//     auto pl = GJBaseGameLayer::get();
-//     if (!pl) return;
-
-//     auto bot = Bot::get();
-//     bool fastBypass = bot->updater().useFastLockDelta() ||
-//                       !bot->updater().m_lockDelta->inner();
-//     if (!fastBypass && PlayLayer::get()) return;
-
-//     // ctx.r11 = bot->updater().estimatedStepCount;
-//     ctx.rdi = bot->updater().estimatedStepCount;
-// }
-
-// static void physStepCount2Midhook(SafetyHookContext& ctx) {
-//     auto pl = GJBaseGameLayer::get();
-//     if (!pl) return;
-
-//     auto bot = Bot::get();
-//     bool fastBypass = bot->updater().useFastLockDelta() ||
-//                       !bot->updater().m_lockDelta->inner();
-//     if (!fastBypass && PlayLayer::get()) return;
-
-//     // ctx.r11 = std::min(bot->updater().estimatedStepCount, 1);
-//     // ctx.rdx = std::min(bot->updater().estimatedStepCount, 1);
-// }
-
-static void physStepCountMidhook(SafetyHookContext& ctx) {
-    auto bot = Bot::get();
-    if (!bot->isEnabled()) return;
-    bool fastBypass = bot->updater().useFastLockDelta() ||
-                      !bot->updater().m_lockDelta->inner();
-    if (!fastBypass && PlayLayer::get()) return;
-
-    // to explain what's going on here;
-    // basically the game does an incrementing step count up to but not
-    // including 2
-    //
-    // the thing is, this can technically be negative
-    // so for instance for a step count of 3
-    // we wanna set it to -1
-    // so the steps are gonna be: -1, 0, 1 respectively
-    //
-    // thank you robtop :mending_heart:
-    ctx.rdx = 2 - bot->updater().estimatedStepCount;  // lmao
-}
-
-static void restorePhysDtHook(SafetyHookContext& ctx) {
-    auto pl = GJBaseGameLayer::get();
-    if (!pl) return;
-
-    auto bot = Bot::get();
-    if (!bot->isEnabled()) return;
-    bool fastBypass = bot->updater().useFastLockDelta() ||
-                      !bot->updater().m_lockDelta->inner();
-    if (!fastBypass && PlayLayer::get()) return;
-
-    double newDt =
-        bot->updater().getPhysicsDt() * bot->updater().estimatedStepCount;
-
-    ctx.xmm9.f64[0] = newDt;
-}
-
 static int s_backstepJobSteps = 0;
 static BotScheduler::JobId s_backstepJob{};
 
@@ -776,15 +608,27 @@ static void updateBackstepPlayers(PlayLayer* pl) {
 }
 
 $execute {
-    util::midhook(geode::base::get() + 0x237A7C, "physDt", physDtMidhook);
-    util::midhook(geode::base::get() + 0x237DCE, "physStepCount",
-                  physStepCountMidhook);
-    util::midhook(geode::base::get() + 0x238F6E, "restorePhysDt",
-                  restorePhysDtHook);
-    util::midhook(geode::base::get() + 0x237E42, "backstepUpdate",
-                  backstepUpdateMidhook);
-    util::midhook(geode::base::get() + 0x238BAA, "frameUpdate",
-                  frameUpdateMidhook);
+    uint8_t tpsPatch[] = {
+        0x49, 0xBB,                            // mov r11, imm64
+        0,    0,    0,    0,    0,   0, 0, 0,  // m_physicsStepCount
+        0x45, 0x8B, 0x1B,                      // mov r11d, [r11]
+        0xE9, 0x31, 0x00, 0x00, 0x00           // jmp to 237A9E
+    };
+
+    const uint64_t addr = reinterpret_cast<uint64_t>(
+        &Bot::get()->updater().m_physicsStepCount);
+    std::memcpy(&tpsPatch[2], &addr, sizeof(addr));
+
+    (void)geode::Mod::get()->patch(
+        reinterpret_cast<void*>(base::get() + 0x237A5B), tpsPatch);
+
+    // SL_VER(
+    //     util::midhook(geode::base::get() + 0x237A7C, "physDt",
+    //     physDtMidhook));
+    // SL_VER(util::midhook(geode::base::get() + 0x237DCE, "physStepCount",
+    //                      physStepCountMidhook));
+    // SL_VER(util::midhook(geode::base::get() + 0x238F6E, "restorePhysDt",
+    //                      restorePhysDtHook));
 
     auto bot = Bot::get();
     bot->updater().m_speedhack->handle(

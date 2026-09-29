@@ -93,6 +93,8 @@ class BotUpdater {
     int savedStepCount = 0;
     int totalStepCount = 0;
     int estimatedStepCount = 1;
+    // Number of physics ticks in the current GJBaseGameLayer::update call.
+    uint32_t m_physicsStepCount = 0;
     float currentDelta = 0.0;
 
     // Whether the player can die in the macro or not, adds a "Death" or

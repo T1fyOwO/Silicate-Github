@@ -9,7 +9,9 @@
 #include <safetyhook.hpp>
 #include <vector>
 
+#include "assist/autoclicker.hpp"
 #include "assist/cps.hpp"
+#include "assist/hitboxes.hpp"
 #include "bot/bot.hpp"
 #include "bot/updater.hpp"
 #include "checkpoint/fix.hpp"
@@ -225,6 +227,13 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
                 std::min(updater.estimatedStepCount, 1);
         }
 
+        // Accuracy Lock Delta already splits the frame into individual
+        // updates. Only batched updates should run the whole step count here.
+        updater.m_physicsStepCount =
+            lockDelta && !updater.useFastLockDelta()
+                ? std::clamp(updater.estimatedStepCount, 0, 1)
+                : std::max(updater.estimatedStepCount, 0);
+
         if (updater.m_extrapolateFrames->inner() &&
             updater.getFrame() > updater.m_frameOnLastAttempt) {
             if (this->shouldExtrapolate()) {
@@ -286,8 +295,9 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
             return 0.0f;
         }
 
-        float wantedDt =
-            updater.getPhysicsDt() * fminf(m_gameState.m_timeWarp, 1.0f);
+        float wantedDt = updater.getPhysicsDt() *
+                         fminf(m_gameState.m_timeWarp, 1.0f) *
+                         updater.m_physicsStepCount;
 
         return wantedDt;
     }
@@ -693,6 +703,96 @@ struct SLGJBaseGameLayer : Modify<SLGJBaseGameLayer, GJBaseGameLayer> {
         GJBaseGameLayer::updateColor(color, fadeTime, colorID, blending,
                                      opacity, copyHSV, colorIDToCopy,
                                      copyOpacity, callerObject, unk1, unk2);
+    }
+
+    void processCommands(float dt, bool isHalfTick, bool isLastTick) {
+        auto bot = Bot::get();
+        if (bot->updater().m_onlyRefresh) return;
+
+        PlayLayer* play = PlayLayer::get();
+        if (!play) return;
+
+        if (!play->m_playerDied &&
+            bot->updater().m_backwardsStepping->inner() &&
+            !Renderer::get()->isRecording()) {
+            CheckpointObject* checkpoint = play->createCheckpoint();
+            checkpoint->retain();
+            bot->practiceFix().saveState(
+                checkpoint, Bot::get()->updater().m_frameOnLastAttempt);
+        }
+
+        GJBaseGameLayer::processCommands(dt, isHalfTick, isLastTick);
+
+        if (!bot->isEnabled()) return;
+
+        auto pl = GJBaseGameLayer::get();
+        if (!pl) return;
+
+        if (pl->m_resumeTimer > 0) {
+            return;
+        }
+
+        PlayLayer* pll = PlayLayer::get();
+        auto& updater = bot->updater();
+
+        if (!pl->m_playerDied) {
+            if (pll) {
+                updater.incrementFrame();
+                updater.m_timewarpTime +=
+                    updater.getPhysicsDt() * pll->m_gameState.m_timeWarp;
+            }
+
+            bot->cps().update();
+            bot->hitboxes().saveToTrail(pl);
+
+            auto trajectory = bot->trajectory().unsafeInner();
+            if (trajectory && pll && updater.m_fullGamePrediction->inner() &&
+                updater.m_preventDeath->inner()) {
+                using Mode = SLSettings::TrajectorySettings::Mode;
+
+                {
+                    int mode = Mode::Player1;
+                    mode |= pl->m_player1->m_jumpBuffered ? Mode::Hold
+                                                          : Mode::Release;
+                    auto pred = trajectory->simulate(
+                        pl, true, mode, false,
+                        {.m_bypassConfig = true, .m_maxLength = 3});
+                    if (pred.score <= 3) {
+                        bot->updater().setPaused(true);
+                        // bot->updater().breakLoop();
+                    }
+
+                    if (bot->updater().m_autoFlipOnDeath->inner()) {
+                        pl->queueButton(1, !pl->m_player1->m_jumpBuffered,
+                                        false, 0.0);
+                        bot->updater().setPaused(false);
+                    }
+                }
+
+                if (pl->m_gameState.m_isDualMode) {
+                    int mode = Mode::Player2;
+                    mode |= pl->m_player2->m_jumpBuffered ? Mode::Hold
+                                                          : Mode::Release;
+                    auto pred = trajectory->simulate(
+                        pl, false, mode, false,
+                        {.m_bypassConfig = true, .m_maxLength = 3});
+                    if (pred.score <= 3) {
+                        bot->updater().setPaused(true);
+                        // bot->updater().breakLoop();
+                    }
+
+                    if (bot->updater().m_autoFlipOnDeath->inner()) {
+                        pl->queueButton(1, !pl->m_player2->m_jumpBuffered, true,
+                                        0.0);
+                        bot->updater().setPaused(false);
+                    }
+                }
+            }
+        }
+
+        if (pll) {
+            bot->autoclicker().update(pll);
+        }
     }
 
     void triggerGradientCommand(GradientTriggerObject* obj) {

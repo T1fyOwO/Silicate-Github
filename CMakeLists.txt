@@ -67,6 +67,8 @@ add_library(${PROJECT_NAME} SHARED
 
     src/util/midhook.cpp
     src/hooks/GJEffectManager.cpp
+
+    tests/load.cpp
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE /W4)
